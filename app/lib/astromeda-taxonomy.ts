@@ -74,6 +74,46 @@ export const ASTROMEDA_GPUS: AstromedaGpu[] = [
   { slug: "rtx4090", jpName: "RTX 4090", tier: "ultra" },
 ];
 
+
+
+/**
+ * 製品群 (IP コラボ内のカテゴリ分類)
+ * 商品 title の正規表現で動的に検出する。
+ */
+export interface ProductGroup {
+  slug: string;
+  jpName: string;
+  patterns: RegExp[];
+}
+
+export const PRODUCT_GROUPS: ProductGroup[] = [
+  { slug: "gaming-pc", jpName: "ゲーミングPC本体", patterns: [/コラボPC/i, /AMD\s+Ryzen/i, /Intel\s+Core/i, /^(?!.*ケース).*PC\b/i] },
+  { slug: "pc-case", jpName: "PCケース", patterns: [/PCケース/i, /PC ケース/i] },
+  { slug: "panel", jpName: "着せ替えパネル", patterns: [/パネル/, /着せ替え/, /サイドパネル/] },
+  { slug: "keyboard", jpName: "キーボード", patterns: [/キーボード/i, /Keyboard/i] },
+  { slug: "mousepad", jpName: "マウスパッド", patterns: [/マウスパッド/i, /MousePad/i, /Mouse\s*Pad/i] },
+  { slug: "case-fan", jpName: "ケースファン", patterns: [/ケースファン/, /Case\s*Fan/i] },
+  { slug: "battery", jpName: "モバイルバッテリー", patterns: [/モバイルバッテリー/, /モバブ/] },
+  { slug: "apparel", jpName: "Tシャツ・パーカー", patterns: [/Tシャツ/, /パーカー/, /T-Shirt/i, /Hoodie/i] },
+  { slug: "acrylic", jpName: "アクリルスタンド", patterns: [/アクリル/, /Acrylic/i] },
+  { slug: "tin-badge", jpName: "缶バッジ", patterns: [/缶バッジ/] },
+  { slug: "metal-card", jpName: "メタルカード", patterns: [/メタルカード/, /Metal\s*Card/i] },
+  { slug: "tote-bag", jpName: "トートバッグ", patterns: [/トートバッグ/, /Tote/i] },
+  { slug: "other-goods", jpName: "その他グッズ", patterns: [/グッズ/] },
+];
+
+export function detectProductGroup(title: string, tags: string[] = []): string {
+  // tag に直接マッチする場合を優先
+  for (const g of PRODUCT_GROUPS) {
+    if (tags.some((t) => g.patterns.some((p) => p.test(t)))) return g.slug;
+  }
+  // title から検出
+  for (const g of PRODUCT_GROUPS) {
+    if (g.patterns.some((p) => p.test(title))) return g.slug;
+  }
+  return "other";
+}
+
 /**
  * 階層選択を Metaobject の target_type / target_handle / target_label に解決する
  */
@@ -82,6 +122,7 @@ export type TargetRoot = "astromeda" | "ip_collab";
 export interface HierarchicalSelection {
   root: TargetRoot;
   ip?: string;          // IP handle (root=ip_collab)
+  productGroup?: string; // 製品群 slug (root=ip_collab で IP 選択後)
   color?: string;       // color slug (root=astromeda)
   gpu?: string;         // GPU slug (root=astromeda)
   scope: "all" | "specific";
@@ -99,18 +140,29 @@ export function resolveTarget(sel: HierarchicalSelection): ResolvedTarget {
   if (sel.root === "ip_collab") {
     const ip = IP_COLLABS.find((x) => x.handle === sel.ip);
     if (!ip) return { target_type: "all", target_handle: "", target_label: "未選択" };
+    const group = sel.productGroup ? PRODUCT_GROUPS.find((g) => g.slug === sel.productGroup) : null;
+    const groupLabel = group ? group.jpName : "全製品群";
+
     if (sel.scope === "specific" && sel.productHandle) {
       return {
         target_type: "product",
         target_handle: sel.productHandle,
-        target_label: `${ip.jpName}: ${sel.productTitle || sel.productHandle}`,
+        target_label: `${ip.jpName} ${groupLabel}: ${sel.productTitle || sel.productHandle}`,
       };
     }
-    // all in IP
+    // IP + 製品群指定 → product_tag に複合キー (実際の配信はアプリ側で IP collection × group filter で実装)
+    if (group) {
+      return {
+        target_type: "product_tag",
+        target_handle: `${ip.handle}+${group.slug}`,
+        target_label: `${ip.jpName} の ${group.jpName} 全商品`,
+      };
+    }
+    // IP 全商品
     return {
       target_type: "collection",
       target_handle: ip.productCollectionHandle || ip.handle,
-      target_label: `${ip.jpName} 全商品`,
+      target_label: `${ip.jpName} 全商品 (全製品群)`,
     };
   }
 
@@ -178,10 +230,16 @@ export function inferSelection(target_type: string, target_handle: string): Hier
     return { root: "astromeda", scope: "all" };
   }
   if (target_type === "product_tag") {
-    // color+gpu pattern: e.g. "purple+rtx4060"
+    // IP+group pattern: e.g. "jujutsukaisen-collaboration+gaming-pc"
     if (target_handle.includes("+")) {
-      const [c, g] = target_handle.split("+");
-      return { root: "astromeda", color: c, gpu: g, scope: "all" };
+      const [head, tail] = target_handle.split("+");
+      const ipMatch = IP_COLLABS.find((x) => x.handle === head);
+      const groupMatch = PRODUCT_GROUPS.find((g) => g.slug === tail);
+      if (ipMatch && groupMatch) {
+        return { root: "ip_collab", ip: ipMatch.handle, productGroup: groupMatch.slug, scope: "all" };
+      }
+      // color+gpu pattern
+      return { root: "astromeda", color: head, gpu: tail, scope: "all" };
     }
     // GPU only
     const gpuMatch = ASTROMEDA_GPUS.find((g) => g.slug === target_handle);

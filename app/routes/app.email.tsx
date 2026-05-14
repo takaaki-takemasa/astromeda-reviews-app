@@ -9,8 +9,8 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import { authenticate } from "../shopify.server";
 import { appendAuditLogSafe } from "../lib/audit-log";
 import {
-  IP_COLLABS, ASTROMEDA_COLORS, ASTROMEDA_GPUS,
-  resolveTarget, inferSelection,
+  IP_COLLABS, ASTROMEDA_COLORS, ASTROMEDA_GPUS, PRODUCT_GROUPS,
+  resolveTarget, inferSelection, detectProductGroup,
   type HierarchicalSelection, type TargetRoot,
 } from "../lib/astromeda-taxonomy";
 
@@ -112,7 +112,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
 
   // 親製品クエリ: コラボPC OR gaming-pc OR アストロメダPC タグ持ち
-  const parentProductsQuery = "status:active AND (tag:コラボPC OR tag:gaming-pc OR tag:アストロメダPC)";
+  // IP コラボ製品も拾えるよう query を緩める (status:active のみで取得し、後で part フィルタ)
+  const parentProductsQuery = "status:active";
 
   const [cfgRes, prodRes, orderRes] = await Promise.all([
     admin.graphql(LIST_QUERY, { variables: { first: 50 } }),
@@ -259,13 +260,37 @@ export default function EmailTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolved.target_label]);
 
+  // 選択中 IP に存在する製品群を動的算出 (該当 IP の商品の detectProductGroup を unique 集計)
+  const availableGroups = useMemo(() => {
+    if (sel.root !== "ip_collab" || !sel.ip) return [];
+    const ip = IP_COLLABS.find((x) => x.handle === sel.ip);
+    const targetHandles = [ip?.handle, ip?.productCollectionHandle].filter(Boolean) as string[];
+    const ipProducts = products.filter((p) => p.collectionHandles.some((h) => targetHandles.includes(h)));
+    const groupCounts = new Map<string, number>();
+    ipProducts.forEach((p) => {
+      const g = detectProductGroup(p.title, p.tags);
+      groupCounts.set(g, (groupCounts.get(g) || 0) + 1);
+    });
+    return Array.from(groupCounts.entries())
+      .map(([slug, count]) => {
+        const g = PRODUCT_GROUPS.find((x) => x.slug === slug);
+        return { slug, jpName: g?.jpName || slug, count };
+      })
+      .sort((a, b) => b.count - a.count);
+  }, [sel.root, sel.ip, products]);
+
   // 階層選択でフィルタした親製品リスト (個別商品プルダウン用)
   const filteredProducts = useMemo<ProductOption[]>(() => {
     if (sel.root === "ip_collab" && sel.ip) {
       // IP コラボの商品 (collection に含まれる)
       const ip = IP_COLLABS.find((x) => x.handle === sel.ip);
       const targetHandles = [ip?.handle, ip?.productCollectionHandle].filter(Boolean) as string[];
-      return products.filter((p) => p.collectionHandles.some((h) => targetHandles.includes(h)));
+      let f = products.filter((p) => p.collectionHandles.some((h) => targetHandles.includes(h)));
+      // 製品群フィルタ
+      if (sel.productGroup) {
+        f = f.filter((p) => detectProductGroup(p.title, p.tags) === sel.productGroup);
+      }
+      return f;
     }
     if (sel.root === "astromeda") {
       // アストロメダPC: カラー collection に含まれる + GPU タグ持ち
@@ -464,17 +489,29 @@ export default function EmailTab() {
                 />
               </Box>
 
-              {/* Step 2-IP: IP 選択 */}
+              {/* Step 2-IP: IP 選択 → 製品群 選択 → 絞り込み */}
               {sel.root === "ip_collab" ? (
                 <Box padding="300" background="bg-surface-secondary" borderRadius="200">
                   <BlockStack gap="300">
-                    <Select label="② IP を選択" options={ipOptions} value={sel.ip || ""} onChange={(v) => setSel({ ...sel, ip: v, scope: "all", productHandle: undefined })} />
+                    <Select label="② IP を選択" options={ipOptions} value={sel.ip || ""} onChange={(v) => setSel({ ...sel, ip: v, productGroup: undefined, scope: "all", productHandle: undefined })} />
+                    {sel.ip ? (
+                      <Select
+                        label="③ 製品群"
+                        options={[
+                          { label: `全製品群 (${filteredProducts.length} 件)`, value: "" },
+                          ...availableGroups.map((g) => ({ label: `${g.jpName} (${g.count} 件)`, value: g.slug })),
+                        ]}
+                        value={sel.productGroup || ""}
+                        onChange={(v) => setSel({ ...sel, productGroup: v || undefined, scope: "all", productHandle: undefined })}
+                        helpText="ゲーミングPC / マウスパッド / キーボード等で絞り込み"
+                      />
+                    ) : null}
                     {sel.ip ? (
                       <ChoiceList
-                        title="③ 絞り込み"
+                        title="④ 絞り込み"
                         choices={[
-                          { label: `この IP の全商品 (${filteredProducts.length} 件)`, value: "all" },
-                          { label: "個別商品を選択", value: "specific" },
+                          { label: `${sel.productGroup ? "この製品群の" : "この IP の"}全商品 (${filteredProducts.length} 件)`, value: "all" },
+                          { label: "個別モデルを選択", value: "specific" },
                         ]}
                         selected={[sel.scope]}
                         onChange={(v) => setSel({ ...sel, scope: v[0] as "all" | "specific" })}
