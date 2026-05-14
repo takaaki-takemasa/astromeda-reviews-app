@@ -619,5 +619,29 @@ export default function EmailTab() {
                   <Text as="h2" variant="headingMd">{previewSubject || "(件名未入力)"}</Text>
                 </Box>
                 <Divider />
-                <Box padding="0">
-      
+                  <div style={{ background: "#0d9488", padding: 18, textAlign: "center" }}>
+                    <span style={{ color: "#fff", fontSize: 18, fontWeight: 700, letterSpacing: 2 }}>ASTROMEDA</span>
+                  </div>
+                  <Box padding="500">
+                    <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: '-apple-system, "Hiragino Sans", "Yu Gothic UI", sans-serif', fontSize: 14, lineHeight: 1.7, margin: 0, color: "#0f172a" }}>{previewBody || "(本文未入力)"}</pre>
+                    {meta.incentive_text ? (
+                      <Box padding="300" background="bg-surface-success" borderRadius="200"><Text as="p" variant="bodySm">🎁 {meta.incentive_text}</Text></Box>
+                    ) : null}
+                  </Box>
+                </Box>
+              </Card>
+
+              <Box padding="300" background="bg-surface-secondary" borderRadius="200">
+                <BlockStack gap="100">
+                  <Text as="h4" variant="headingSm">🔍 内部処理 (技術参考)</Text>
+                  <Text as="p" variant="bodyXs" tone="subdued">target_type: <code>{resolved.target_type}</code></Text>
+                  <Text as="p" variant="bodyXs" tone="subdued">target_handle: <code>{resolved.target_handle || "(未確定)"}</code></Text>
+                </BlockStack>
+              </Box>
+            </BlockStack>
+          </InlineGrid>
+        </Modal.Section>
+      </Modal>
+    </Page>
+  );
+}
