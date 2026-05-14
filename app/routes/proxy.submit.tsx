@@ -6,7 +6,7 @@ import { enforceRateLimit, RATE_LIMITS } from "../lib/rate-limit";
 /**
  * Customer-facing review submission form via App Proxy.
  *
- * URL: https://shop.mining-base.co.jp/apps/reviews/submit?token=XXX
+ * URL: https://shop.mining-base.co.jp/apps/reviews-1/submit?token=XXX
  *      → Shopify proxies to /proxy/submit?token=XXX (this route)
  *
  * Phase K-01〜K-07 で扱う論点:

@@ -147,7 +147,7 @@ export default function TokensTab() {
   const tabIndex = Math.max(0, tabs.findIndex((t) => t.id === tab));
 
   const copy = (token: string) => {
-    const url = `https://${STORE_DOMAIN}/apps/reviews/submit?token=${token}`;
+    const url = `https://${STORE_DOMAIN}/apps/reviews-1/submit?token=${token}`;
     if (typeof navigator !== "undefined" && navigator.clipboard) navigator.clipboard.writeText(url);
   };
 
@@ -163,7 +163,7 @@ export default function TokensTab() {
             <Banner tone="success" title="トークンを発行しました" onDismiss={() => {}}>
               <BlockStack gap="200">
                 <Text as="p" variant="bodyMd">送信用 URL (クリップボードにコピー、メールでお客様に送付):</Text>
-                <Text as="p" variant="bodySm" tone="subdued">https://{STORE_DOMAIN}/apps/reviews/submit?token={fetcher.data.token}</Text>
+                <Text as="p" variant="bodySm" tone="subdued">https://{STORE_DOMAIN}/apps/reviews-1/submit?token={fetcher.data.token}</Text>
                 <InlineStack><Button onClick={() => copy(fetcher.data!.token!)}>URL をコピー</Button></InlineStack>
               </BlockStack>
             </Banner>
