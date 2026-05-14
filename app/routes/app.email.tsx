@@ -44,20 +44,24 @@ const LIST_QUERY = `#graphql
   }
 `;
 
-// すべての親製品 (PCケース等のパーツ除外) を取得して階層フィルタに使う
-const PARENT_PRODUCTS_QUERY = `#graphql
-  query ListParentProducts($first: Int!, $query: String!) {
-    products(first: $first, query: $query, sortKey: TITLE) {
-      edges {
-        node {
-          id title handle
-          tags
-          collections(first: 10) { edges { node { handle } } }
-        }
-      }
-    }
-  }
-`;
+// 対象コレクション (IPコラボ 23 + 8 色 + gaming-pc) ごとに製品をまとめて取得する。
+// status:active + first:250 では 1417 商品中、日本語タイトルの IP 商品が
+// alphabetical sort で 250 番以降に押し出されて 0 件になっていた根本バグの修正。
+// alias 付き collectionByHandle を 1 リクエストにまとめれば 1 往復で完結する。
+function buildCollectionsProductsQuery(): string {
+  const ipAliases = IP_COLLABS.map((ip, i) => {
+    const handle = ip.productCollectionHandle || ip.handle;
+    return `ip${i}: collectionByHandle(handle: "${handle}") { handle title products(first: 100) { edges { node { id title handle tags } } } }`;
+  }).join("\n  ");
+  const colorAliases = ASTROMEDA_COLORS.map((c, i) =>
+    `color${i}: collectionByHandle(handle: "${c.slug}") { handle title products(first: 100) { edges { node { id title handle tags } } } }`
+  ).join("\n  ");
+  // gaming-pc は 1600 商品ある集約 collection なので、IP/color に含まれない PC のみを 50 件抜粋
+  // (color 単体絞り込みすれば実際の表示には color collection 側の 24 商品 × 8 = 192 で十分)
+  const gamingPc = `gamingPc: collectionByHandle(handle: "gaming-pc") { handle title products(first: 50, sortKey: BEST_SELLING) { edges { node { id title handle tags } } } }`;
+  return `#graphql\nquery AllRelevantCollections {\n  ${ipAliases}\n  ${colorAliases}\n  ${gamingPc}\n}`;
+}
+type CollectionNode = { handle: string; title?: string; products?: { edges: Array<{ node: { id: string; title: string; handle: string; tags: string[] } }> } } | null;
 
 const ORDERS_LAST_30D_COUNT_QUERY = `#graphql
   query CountFulfilledOrdersLast30Days {
@@ -112,18 +116,16 @@ const isPartTag = (tag: string) => PARTS_TAG_PATTERNS.some((p) => p.test(tag));
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
 
-  // 親製品クエリ: コラボPC OR gaming-pc OR アストロメダPC タグ持ち
-  // IP コラボ製品も拾えるよう query を緩める (status:active のみで取得し、後で part フィルタ)
-  const parentProductsQuery = "status:active";
+  const collectionsQuery = buildCollectionsProductsQuery();
 
-  const [cfgRes, prodRes, orderRes] = await Promise.all([
+  const [cfgRes, collRes, orderRes] = await Promise.all([
     admin.graphql(LIST_QUERY, { variables: { first: 50 } }),
-    admin.graphql(PARENT_PRODUCTS_QUERY, { variables: { first: 250, query: parentProductsQuery } }).catch(() => null),
+    admin.graphql(collectionsQuery).catch(() => null),
     admin.graphql(ORDERS_LAST_30D_COUNT_QUERY).catch(() => null),
   ]);
 
   const cfgJson = (await cfgRes.json()) as { data?: { metaobjects?: { edges: Array<{ node: { id: string; updatedAt: string; fields: Array<{ key: string; value: string }> } }> } } };
-  const prodJson = prodRes ? (await prodRes.json()) as { data?: { products?: { edges: Array<{ node: { id: string; title: string; handle: string; tags: string[]; collections?: { edges: Array<{ node: { handle: string } }> } } }> } } } : null;
+  const collJson = collRes ? (await collRes.json()) as { data?: Record<string, CollectionNode> } : null;
   const orderJson = orderRes ? (await orderRes.json()) as { data?: { ordersCount?: { count: number } } } : null;
 
   const configs: EmailConfig[] = (cfgJson.data?.metaobjects?.edges ?? []).map((e) => ({
@@ -141,15 +143,30 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     last_modified_by: extractField(e.node, "last_modified_by"),
   }));
 
-  const products: ProductOption[] = (prodJson?.data?.products?.edges ?? [])
-    .filter((e) => !(e.node.tags ?? []).some((t) => isPartTag(t)))
-    .map((e) => ({
-      id: e.node.id,
-      title: e.node.title,
-      handle: e.node.handle,
-      tags: e.node.tags ?? [],
-      collectionHandles: (e.node.collections?.edges ?? []).map((c) => c.node.handle),
-    }));
+  // 商品 → collectionHandles[] にマージ。同一商品が複数コレクションに入る場合に対応。
+  const productMap = new Map<string, ProductOption>();
+  if (collJson?.data) {
+    for (const [, coll] of Object.entries(collJson.data)) {
+      if (!coll || !coll.products) continue;
+      for (const edge of coll.products.edges) {
+        const p = edge.node;
+        if ((p.tags ?? []).some((t) => isPartTag(t))) continue;
+        const existing = productMap.get(p.handle);
+        if (existing) {
+          if (!existing.collectionHandles.includes(coll.handle)) existing.collectionHandles.push(coll.handle);
+        } else {
+          productMap.set(p.handle, {
+            id: p.id,
+            title: p.title,
+            handle: p.handle,
+            tags: p.tags ?? [],
+            collectionHandles: [coll.handle],
+          });
+        }
+      }
+    }
+  }
+  const products: ProductOption[] = Array.from(productMap.values());
 
   return { configs, products, ordersLast30Days: orderJson?.data?.ordersCount?.count ?? 0 };
 };
@@ -603,24 +620,4 @@ export default function EmailTab() {
                 </Box>
                 <Divider />
                 <Box padding="0">
-                  <div style={{ background: "#0d9488", padding: 18, textAlign: "center" }}>
-                    <span style={{ color: "#fff", fontSize: 18, fontWeight: 700, letterSpacing: 2 }}>ASTROMEDA</span>
-                  </div>
-                  <Box padding="500">
-                    <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: '-apple-system, "Hiragino Sans", "Yu Gothic UI", sans-serif', fontSize: 14, lineHeight: 1.7, margin: 0, color: "#0f172a" }}>{previewBody || "(本文未入力)"}</pre>
-                    {meta.incentive_text ? (
-                      <Box padding="300" background="bg-surface-success" borderRadius="200"><Text as="p" variant="bodySm">🎁 {meta.incentive_text}</Text></Box>
-                    ) : null}
-                  </Box>
-                </Box>
-              </Card>
-
-              <Box padding="300" background="bg-surface-secondary" borderRadius="200">
-                <BlockStack gap="100">
-                  <Text as="h4" variant="headingSm">🔍 内部処理 (技術参考)</Text>
-                  <Text as="p" variant="bodyXs" tone="subdued">target_type: <code>{resolved.target_type}</code></Text>
-                  <Text as="p" variant="bodyXs" tone="subdued">target_handle: <code>{resolved.target_handle || "(未確定)"}</code></Text>
-                </BlockStack>
-              </Box>
-            </BlockStack>
-    
+      
