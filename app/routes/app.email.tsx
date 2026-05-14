@@ -9,7 +9,7 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import { authenticate } from "../shopify.server";
 import { appendAuditLogSafe } from "../lib/audit-log";
 
-type TargetType = "collection" | "product_tag" | "category" | "all";
+type TargetType = "collection" | "product_tag" | "product" | "category" | "all";
 
 interface EmailConfig {
   id: string;
@@ -28,6 +28,7 @@ interface EmailConfig {
 
 interface CollectionOption { handle: string; title: string; productCount: number; }
 interface ProductTagOption { tag: string; count: number; }
+interface ProductOption { id: string; title: string; handle: string; collectionTitle: string; }
 
 const LIST_QUERY = `#graphql
   query ListEmailConfigs($first: Int!) {
@@ -58,6 +59,22 @@ const PRODUCT_TAGS_QUERY = `#graphql
   query ListProductTags($first: Int!) {
     productTags(first: $first) {
       edges { node }
+    }
+  }
+`;
+
+// 親製品 (= parent PC products, excluding parts) を取得
+// pulldown-component / parts / パーツ タグを持つ商品は除外
+const PARENT_PRODUCTS_QUERY = `#graphql
+  query ListParentProducts($first: Int!, $query: String!) {
+    products(first: $first, query: $query, sortKey: TITLE) {
+      edges {
+        node {
+          id title handle
+          tags
+          collections(first: 3) { edges { node { title handle } } }
+        }
+      }
     }
   }
 `;
@@ -104,18 +121,23 @@ function extractField(node: { fields: Array<{ key: string; value: string }> }, k
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
 
-  // Parallel fetch: configs / collections / product tags / orders count
-  const [cfgRes, colRes, tagRes, orderRes] = await Promise.all([
+  // 親製品クエリ: PCケース等のパーツを除外 (pulldown-component / parts / パーツ タグ持ちを除く)
+  // Shopify Admin search: tag_not の構文がないので、まず all を取って後段でフィルタする方式に
+  const parentProductsQuery = "status:active AND (tag:コラボPC OR tag:gaming-pc OR tag:アストロメダPC)";
+
+  const [cfgRes, colRes, tagRes, orderRes, prodRes] = await Promise.all([
     admin.graphql(LIST_QUERY, { variables: { first: 50 } }),
     admin.graphql(COLLECTIONS_QUERY, { variables: { first: 100, after: null } }),
     admin.graphql(PRODUCT_TAGS_QUERY, { variables: { first: 250 } }),
     admin.graphql(ORDERS_LAST_30D_COUNT_QUERY).catch(() => null),
+    admin.graphql(PARENT_PRODUCTS_QUERY, { variables: { first: 100, query: parentProductsQuery } }).catch(() => null),
   ]);
 
   const cfgJson = (await cfgRes.json()) as { data?: { metaobjects?: { edges: Array<{ node: { id: string; updatedAt: string; fields: Array<{ key: string; value: string }> } }> } } };
   const colJson = (await colRes.json()) as { data?: { collections?: { edges: Array<{ node: { id: string; handle: string; title: string; productsCount?: { count: number } } }> } } };
   const tagJson = (await tagRes.json()) as { data?: { productTags?: { edges: Array<{ node: string }> } } };
   const orderJson = orderRes ? (await orderRes.json()) as { data?: { ordersCount?: { count: number; precision: string } } } : null;
+  const prodJson = prodRes ? (await prodRes.json()) as { data?: { products?: { edges: Array<{ node: { id: string; title: string; handle: string; tags: string[]; collections?: { edges: Array<{ node: { title: string; handle: string } }> } } }> } } } : null;
 
   const configs: EmailConfig[] = (cfgJson.data?.metaobjects?.edges ?? []).map((e) => ({
     id: e.node.id,
@@ -138,13 +160,35 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     productCount: e.node.productsCount?.count ?? 0,
   }));
 
+  // 親製品タグのみ残す: 部品系タグ (pulldown-component / parts / パーツ / 部品 / add-on) を除外
+  const PARTS_TAG_PATTERNS = [
+    /pulldown[-_]?component/i,
+    /^parts?$/i,
+    /パーツ/,
+    /^部品/,
+    /add[-_]?on/i,
+    /サブ商品/,
+    /component$/i,
+  ];
+  const isPartTag = (tag: string) => PARTS_TAG_PATTERNS.some((p) => p.test(tag));
+
   const tags: ProductTagOption[] = (tagJson.data?.productTags?.edges ?? [])
     .map((e) => ({ tag: e.node, count: 0 }))
-    .filter((t) => t.tag && t.tag.length > 0);
+    .filter((t) => t.tag && t.tag.length > 0 && !isPartTag(t.tag));
+
+  // 親製品 (個別商品レベル指定用) - 部品商品 (pulldown-component タグ持ち) は除外
+  const products: ProductOption[] = (prodJson?.data?.products?.edges ?? [])
+    .filter((e) => !(e.node.tags ?? []).some((t) => isPartTag(t)))
+    .map((e) => ({
+      id: e.node.id,
+      title: e.node.title,
+      handle: e.node.handle,
+      collectionTitle: e.node.collections?.edges?.[0]?.node?.title ?? "",
+    }));
 
   const ordersLast30Days = orderJson?.data?.ordersCount?.count ?? 0;
 
-  return { configs, collections, tags, ordersLast30Days };
+  return { configs, collections, tags, products, ordersLast30Days };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -205,13 +249,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return { ok: false, error: "unknown intent" };
 };
 
+// ASTROMEDA カテゴリ (新サイト販売対象のみ・PCパーツ/クリエイターPC/ストリーマーPCは除外)
 const PREDEFINED_CATEGORIES = [
-  { label: "ゲーミングPC", value: "gaming-pc" },
-  { label: "クリエイターPC", value: "creator-pc" },
-  { label: "ストリーマーPC", value: "streamer-pc" },
-  { label: "ガジェット", value: "gadgets" },
-  { label: "グッズ", value: "goods" },
-  { label: "PCパーツ", value: "pc-parts" },
+  { label: "ゲーミングPC (アストロメダPC本体)", value: "gaming-pc" },
+  { label: "ガジェット (マウスパッド/PCケース/キーボード/パネル等)", value: "gadgets" },
+  { label: "グッズ (アクリル/Tシャツ/パーカー等)", value: "goods" },
 ];
 
 const DEFAULT_TEMPLATE = `{{ customer.first_name }} 様
@@ -232,7 +274,7 @@ function renderPreview(template: string, vars: Record<string, string>): string {
 }
 
 export default function EmailTab() {
-  const { configs, collections, tags, ordersLast30Days } = useLoaderData<typeof loader>();
+  const { configs, collections, tags, products, ordersLast30Days } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const revalidator = useRevalidator();
 
@@ -255,6 +297,9 @@ export default function EmailTab() {
     if (form.target_type === "collection") {
       const c = collections.find((x) => x.handle === form.target_handle);
       if (c && !form.target_label) setForm((f) => ({ ...f, target_label: c.title }));
+    } else if (form.target_type === "product") {
+      const p = products.find((x) => x.handle === form.target_handle);
+      if (p && !form.target_label) setForm((f) => ({ ...f, target_label: p.title }));
     } else if (form.target_type === "category") {
       const cat = PREDEFINED_CATEGORIES.find((x) => x.value === form.target_handle);
       if (cat && !form.target_label) setForm((f) => ({ ...f, target_label: cat.label }));
@@ -310,22 +355,26 @@ export default function EmailTab() {
       const c = collections.find((x) => x.handle === form.target_handle);
       matchingProducts = c?.productCount ?? 0;
       label = c ? `「${c.title}」コレクション` : "(未選択)";
+    } else if (form.target_type === "product") {
+      const p = products.find((x) => x.handle === form.target_handle);
+      matchingProducts = p ? 1 : 0;
+      label = p ? `個別商品「${p.title}」${p.collectionTitle ? ` (${p.collectionTitle})` : ""}` : "(未選択)";
     } else if (form.target_type === "product_tag") {
-      matchingProducts = 0; // 正確な数値は productTags クエリでは取れないので 0 表示
-      label = form.target_handle ? `タグ「${form.target_handle}」` : "(未選択)";
+      matchingProducts = 0;
+      label = form.target_handle ? `親製品タグ「${form.target_handle}」` : "(未選択)";
     } else if (form.target_type === "category") {
       const cat = PREDEFINED_CATEGORIES.find((x) => x.value === form.target_handle);
       label = cat ? `カテゴリ「${cat.label}」` : "(未選択)";
     } else {
-      // all = total active products approximated by sum of all collection product counts (rough)
       matchingProducts = collections.reduce((s, c) => s + c.productCount, 0);
       label = "全商品 (フォールバック)";
     }
-    // 過去 30 日の注文数 × 対象比率 (粗推定)
-    const targetRatio = form.target_type === "all" ? 1 : matchingProducts > 0 ? Math.min(1, matchingProducts / 100) : 0;
+    const targetRatio = form.target_type === "all" ? 1
+      : form.target_type === "product" ? (matchingProducts > 0 ? 0.02 : 0)
+      : matchingProducts > 0 ? Math.min(1, matchingProducts / 100) : 0;
     const estimatedSends = Math.round(ordersLast30Days * targetRatio);
     return { label, matchingProducts, estimatedSends, ordersLast30Days };
-  }, [form.target_type, form.target_handle, collections, ordersLast30Days]);
+  }, [form.target_type, form.target_handle, collections, products, ordersLast30Days]);
 
   // Build dropdown options based on target_type
   const handleOptions = useMemo(() => {
@@ -337,8 +386,17 @@ export default function EmailTab() {
     }
     if (form.target_type === "product_tag") {
       return [
-        { label: "タグを選択してください", value: "" },
+        { label: "親製品タグを選択してください", value: "" },
         ...tags.map((t) => ({ label: t.tag, value: t.tag })),
+      ];
+    }
+    if (form.target_type === "product") {
+      return [
+        { label: "個別商品を選択してください", value: "" },
+        ...products.map((p) => ({
+          label: p.collectionTitle ? `${p.title} (${p.collectionTitle})` : p.title,
+          value: p.handle,
+        })),
       ];
     }
     if (form.target_type === "category") {
@@ -348,7 +406,7 @@ export default function EmailTab() {
       ];
     }
     return [{ label: "(全商品共通設定なので不要)", value: "" }];
-  }, [form.target_type, collections, tags]);
+  }, [form.target_type, collections, tags, products]);
 
   // Real-time preview rendering
   const previewVars = {
@@ -389,7 +447,7 @@ export default function EmailTab() {
                 {configs.map((c, idx) => (
                   <IndexTable.Row id={c.id} key={c.id} position={idx}>
                     <IndexTable.Cell><Text as="span" variant="bodyMd" fontWeight="semibold">{c.target_label || c.target_handle || "(無名)"}</Text></IndexTable.Cell>
-                    <IndexTable.Cell><Badge>{c.target_type === "collection" ? "コレクション" : c.target_type === "product_tag" ? "タグ" : c.target_type === "category" ? "カテゴリ" : "全商品"}</Badge></IndexTable.Cell>
+                    <IndexTable.Cell><Badge>{c.target_type === "collection" ? "コレクション" : c.target_type === "product" ? "個別商品" : c.target_type === "product_tag" ? "タグ" : c.target_type === "category" ? "カテゴリ" : "全商品"}</Badge></IndexTable.Cell>
                     <IndexTable.Cell>{c.subject}</IndexTable.Cell>
                     <IndexTable.Cell>{c.delay_days}</IndexTable.Cell>
                     <IndexTable.Cell>{c.enabled ? <Badge tone="success">有効</Badge> : <Badge tone="attention">無効</Badge>}</IndexTable.Cell>
@@ -424,8 +482,9 @@ export default function EmailTab() {
                 <Select
                   label="ターゲット種別"
                   options={[
-                    { label: "コレクション (IP コラボなど)", value: "collection" },
-                    { label: "商品タグ", value: "product_tag" },
+                    { label: "コレクション (IP コラボ一括)", value: "collection" },
+                    { label: "個別商品 (この製品だけ)", value: "product" },
+                    { label: "商品タグ (親製品限定)", value: "product_tag" },
                     { label: "カテゴリ", value: "category" },
                     { label: "全商品 (フォールバック)", value: "all" },
                   ]}
@@ -433,7 +492,7 @@ export default function EmailTab() {
                   onChange={(v) => setForm({ ...form, target_type: v as TargetType, target_handle: "", target_label: "" })}
                 />
                 <Select
-                  label={form.target_type === "collection" ? "コレクション" : form.target_type === "product_tag" ? "商品タグ" : form.target_type === "category" ? "カテゴリ" : "—"}
+                  label={form.target_type === "collection" ? "コレクション" : form.target_type === "product_tag" ? "商品タグ (親製品)" : form.target_type === "category" ? "カテゴリ" : form.target_type === "product" ? "個別商品" : "—"}
                   options={handleOptions}
                   value={form.target_handle}
                   onChange={(v) => setForm({ ...form, target_handle: v })}
