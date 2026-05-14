@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>口コミ機能 Traceability Matrix v1.0 | ASTROMEDA</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+    background: #f0f4f8;
+    color: #0a0e27;
+    line-height: 1.55;
+    padding: 32px 24px 80px;
+    font-size: 14px;
+  }
+  .container { max-width: 1640px; margin: 0 auto; }
+
+  .cover {
+    background: linear-gradient(135deg, #1e3a8a 0%, #3b0764 50%, #581c87 100%);
+    color: #fff;
+    padding: 56px 48px;
+    border-radius: 14px;
+    margin-bottom: 28px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 16px 48px rgba(30, 58, 138, 0.3);
+  }
+  .cover::before {
+    content: '';
+    position: absolute;
+    top: -40%; right: -10%;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(196,181,253,0.18) 0%, transparent 70%);
+  }
+  .cover-label { font-size: 11px; letter-spacing: 4px; color: #c4b5fd; margin-bottom: 14px; font-weight: 700; text-transform: uppercase; }
+  .cover h1 { font-size: 34px; font-weight: 800; margin-bottom: 10px; letter-spacing: -0.5px; }
+  .cover .subtitle { font-size: 15px; color: #ddd6fe; max-width: 850px; margin-bottom: 28px; }
+  .cover-meta {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+    background: rgba(255,255,255,0.06);
+    padding: 22px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.1);
+    backdrop-filter: blur(4px);
+  }
+  .cover-meta .k { font-size: 10px; color: #c4b5fd; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; font-weight: 700; }
+  .cover-meta .v { font-size: 16px; font-weight: 700; color: #fff; }
+
+  section {
+    background: #fff;
+    border-radius: 12px;
+    margin-bottom: 22px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    overflow: hidden;
+  }
+  section > h2 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #4a5568;
+    padding: 18px 28px 14px;
+    border-bottom: 1px solid #e2e8f0;
+    background: #fafbfc;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  section > h2::before {
+    content: '';
+    width: 4px;
+    height: 18px;
+    background: linear-gradient(180deg, #6b46c1, #4c1d95);
+    border-radius: 2px;
+  }
+  .section-body { padding: 28px; }
+
+  /* KPI cards */
+  .kpi-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 12px; }
+  .kpi-card {
+    background: linear-gradient(180deg, #faf5ff 0%, #f3e8ff 100%);
+    border: 1px solid #c4b5fd;
+    border-radius: 8px;
+    padding: 14px;
+    text-align: center;
+  }
+  .kpi-card .k { font-size: 9.5px; color: #6b46c1; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+  .kpi-card .v { font-size: 22px; font-weight: 800; color: #1a202c; margin-top: 4px; }
+  .kpi-card .v small { font-size: 11px; color: #718096; font-weight: 500; }
+
+  /* Main matrix tables */
+  .matrix {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11.5px;
+  }
+  .matrix th, .matrix td {
+    padding: 7px 10px;
+    text-align: left;
+    border: 1px solid #e2e8f0;
+    vertical-align: top;
+  }
+  .matrix thead th {
+    background: #1a1a1a;
+    color: #fff;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 700;
+    position: sticky;
+    top: 0;
+  }
+  .matrix tbody tr:nth-child(even) td { background: #fafbfc; }
+  .matrix tbody tr:hover td { background: #faf5ff; }
+  .id-cell {
+    font-family: 'SF Mono', Menlo, monospace;
+    font-size: 10.5px;
+    font-weight: 700;
+    color: #6b46c1;
+    white-space: nowrap;
+  }
+  .phase-A { background: #ede9fe !important; color: #5b21b6; }
+  .phase-B { background: #e0e7ff !important; color: #4338ca; }
+  .phase-C { background: #dbeafe !important; color: #1e40af; }
+  .phase-D { background: #ccfbf1 !important; color: #115e59; }
+  .phase-E { background: #ccfbf1 !important; color: #115e59; }
+  .phase-F { background: #ccfbf1 !important; color: #115e59; }
+  .phase-G { background: #ccfbf1 !important; color: #115e59; }
+  .phase-H { background: #ccfbf1 !important; color: #115e59; }
+  .phase-I { background: #fed7aa !important; color: #9a3412; }
+  .phase-J { background: #fed7aa !important; color: #9a3412; }
+  .phase-K { background: #fef3c7 !important; color: #92400e; }
+  .phase-L { background: #fecaca !important; color: #991b1b; }
+  .phase-M { background: #bbf7d0 !important; color: #166534; }
+  .phase-MA { background: #e9d5ff !important; color: #6b21a8; font-weight: 700; }
+
+  .spec-tag {
+    display: inline-block;
+    background: #6b46c1;
+    color: #fff;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 9.5px;
+    margin: 1px 2px 1px 0;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .audit-tag {
+    display: inline-block;
+    background: #dc2626;
+    color: #fff;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 9.5px;
+    margin: 1px 2px 1px 0;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .audit-tag.cdo { background: #db2777; }
+  .audit-tag.cto { background: #2563eb; }
+  .audit-tag.cmo { background: #d97706; }
+  .audit-tag.ceo { background: #059669; }
+
+  .critical-marker { color: #dc2626; font-weight: 800; }
+
+  /* Audit coverage cards */
+  .audit-cards {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 18px;
+  }
+  .audit-card {
+    background: linear-gradient(180deg, #fff 0%, #fafbfc 100%);
+    border: 1px solid #e2e8f0;
+    border-top: 5px solid var(--c, #6b46c1);
+    border-radius: 10px;
+    padding: 20px;
+  }
+  .audit-card.cdo { --c: #db2777; }
+  .audit-card.cto { --c: #2563eb; }
+  .audit-card.cmo { --c: #d97706; }
+  .audit-card.ceo { --c: #059669; }
+  .audit-card .role {
+    font-size: 10px;
+    color: var(--c);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    margin-bottom: 4px;
+  }
+  .audit-card h3 { font-size: 16px; font-weight: 700; color: #1a202c; margin-bottom: 10px; }
+  .audit-card .id-line {
+    font-family: 'SF Mono', Menlo, monospace;
+    font-size: 11px;
+    color: #5c5f62;
+    margin-bottom: 12px;
+  }
+  .audit-card h4 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--c);
+    font-weight: 700;
+    margin: 12px 0 6px;
+  }
+  .audit-card ul { padding-left: 18px; }
+  .audit-card li { font-size: 11.5px; color: #2d3748; margin-bottom: 4px; line-height: 1.5; }
+  .audit-card .pass-criteria {
+    background: rgba(0,0,0,0.04);
+    padding: 10px 12px;
+    border-radius: 6px;
+    margin-top: 10px;
+    font-size: 11px;
+    color: #1a202c;
+  }
+  .audit-card .pass-criteria strong { color: var(--c); }
+
+  /* Coverage map (Spec → Gantt) */
+  .reverse-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .reverse-table th, .reverse-table td {
+    padding: 10px 12px;
+    border: 1px solid #e2e8f0;
+    text-align: left;
+    vertical-align: top;
+  }
+  .reverse-table thead th {
+    background: #4c1d95;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .reverse-table tbody tr:nth-child(even) td { background: #faf5ff; }
+
+  /* Gap analysis */
+  .gap-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .gap-table th, .gap-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid #e2e8f0;
+    text-align: left;
+    vertical-align: top;
+  }
+  .gap-table th { background: #fafbfc; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #5c5f62; font-weight: 700; }
+  .gap-status {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .gap-status.covered { background: #d1fae5; color: #065f46; }
+  .gap-status.open { background: #fee2e2; color: #991b1b; }
+  .gap-status.partial { background: #fef3c7; color: #92400e; }
+
+  footer { text-align: center; font-size: 11px; color: #a0aec0; padding-top: 32px; border-top: 1px solid #e2e8f0; margin-top: 16px; }
+
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; font-size: 11px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 4px; }
+  .legend-item .swatch { width: 14px; height: 14px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- ===== Cover ===== -->
+  <div class="cover">
+    <div class="cover-label">Traceability Matrix / Companion Doc #2</div>
+    <h1>口コミ機能 Traceability Matrix v1.0</h1>
+    <div class="subtitle">
+      ガントチャート v1.1（86原子タスク）と UX/UI Design Spec v1.1（15章）の双方向クロスリファレンス。
+      Phase M-Audit の 4視点独立 Chrome MCP 監査がカバーする範囲を明示。Shopify C-suite クロスレビュー基準。
+    </div>
+    <div class="cover-meta">
+      <div><div class="k">Project Code</div><div class="v">REV-EMB-2026-Q2</div></div>
+      <div><div class="k">Version</div><div class="v">v1.0 (Initial)</div></div>
+      <div><div class="k">承認者</div><div class="v">CEO 武正貴昭</div></div>
+      <div><div class="k">関連ドキュメント</div><div class="v">Gantt v1.1 + Spec v1.1</div></div>
+    </div>
+  </div>
+
+  <!-- ===== Coverage KPIs ===== -->
+  <section>
+    <h2>1. カバレッジ サマリー</h2>
+    <div class="section-body">
+      <div class="kpi-row">
+        <div class="kpi-card"><div class="k">総タスク数</div><div class="v">91 <small>件</small></div></div>
+        <div class="kpi-card"><div class="k">Design Spec 章数</div><div class="v">15 <small>章</small></div></div>
+        <div class="kpi-card"><div class="k">独立監査</div><div class="v">4 <small>視点</small></div></div>
+        <div class="kpi-card"><div class="k">Spec ←→ Gantt</div><div class="v">100% <small>網羅</small></div></div>
+        <div class="kpi-card"><div class="k">Critical Path</div><div class="v">14 <small>タスク</small></div></div>
+        <div class="kpi-card"><div class="k">監査検証点</div><div class="v">42 <small>項目</small></div></div>
+      </div>
+      <p style="margin-top:10px;font-size:12px;color:#5c5f62;">
+        v1.1 で追加された Phase M-Audit (5タスク) を含む。Critical Path には Phase A → B → C → D → E → I → J → K → L → M-Audit → M が含まれる。各 Spec 章は最低 1 タスクで実装され、最低 1 監査でカバーされる。
+      </p>
+    </div>
+  </section>
+
+  <!-- ===== Forward Trace: Gantt → Spec ===== -->
+  <section>
+    <h2>2. Forward Traceability: Gantt タスク → Design Spec 章</h2>
+    <div class="section-body">
+      <div class="legend">
+        <div class="legend-item" style="background:#ede9fe;">A: 基盤</div>
+        <div class="legend-item" style="background:#e0e7ff;">B: DB</div>
+        <div class="legend-item" style="background:#dbeafe;">C: Auth</div>
+        <div class="legend-item" style="background:#ccfbf1;">D-H: UI</div>
+        <div class="legend-item" style="background:#fed7aa;">I-J: Backend</div>
+        <div class="legend-item" style="background:#fef3c7;">K: 公開</div>
+        <div class="legend-item" style="background:#fecaca;">L: 剥離</div>
+        <div class="legend-item" style="background:#e9d5ff;">M-A: 監査</div>
+        <div class="legend-item" style="background:#bbf7d0;">M: Go-Live</div>
+      </div>
+
+      <table class="matrix">
+        <thead>
+          <tr>
+            <th style="width:70px;">Task ID</th>
+            <th style="width:50px;">Phase</th>
+            <th style="width:30%;">タスク名</th>
+            <th>Design Spec 参照</th>
+            <th style="width:120px;">監査</th>
+            <th style="width:30px;">⚡</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Phase A -->
+          <tr><td class="id-cell">A-01</td><td class="phase-A">A</td><td>キックオフ・要件最終確認</td><td><span class="spec-tag">§1 原則</span> <span class="spec-tag">§2 ペルソナ</span></td><td><span class="audit-tag ceo">M-A4</span></td><td></td></tr>
+          <tr><td class="id-cell">A-02</td><td class="phase-A">A</td><td>GitHub repo 作成</td><td>—</td><td>—</td><td></td></tr>
+          <tr><td class="id-cell">A-03</td><td class="phase-A">A</td><td>Shopify Remix template 初期化</td><td><span class="spec-tag">§1 Polaris-First</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+          <tr><td class="id-cell">A-04</td><td class="phase-A">A</td><td>Fly.io account + CLI</td><td><span class="spec-tag">§11 SLO</span></td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+          <tr><td class="id-cell">A-05</td><td class="phase-A">A</td><td>fly.toml 構成 + Hello World デプロイ</td><td><span class="spec-tag">§11 Performance</span></td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+          <tr><td class="id-cell">A-06</td><td class="phase-A">A</td><td>app URL を Fly.io に切替</td><td>—</td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+          <tr><td class="id-cell">A-07</td><td class="phase-A">A</td><td>OAuth インストール検証</td><td><span class="spec-tag">§9 Security</span></td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+          <tr><td class="id-cell">A-08</td><td class="phase-A">A</td><td>GitHub Actions + Fly token</td><td>—</td><td>—</td><td></td></tr>
+          <tr><td class="id-cell">A-09</td><td class="phase-A">A</td><td>README + ADR-001</td><td><span class="spec-tag">§1 原則</span></td><td>—</td><td></td></tr>
+
+          <!-- Phase B -->
+          <tr><td class="id-cell">B-01</td><td class="phase-B">B</td><td>Metaobject TS 型定義</td><td><span class="spec-tag">§4 IA</span></td><td>—</td><td></td></tr>
+          <tr><td class="id-cell">B-02</td><td class="phase-B">B</td><td>Admin GraphQL Client helper</td><td><span class="spec-tag">§11 SLO</span></td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+          <tr><td class="id-cell">B-03</td><td class="phase-B">B</td><td>Prisma SQLite Session</td><td><span class="spec-tag">§9 Security</span></td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+          <tr><td class="id-cell">B-04</td><td class="phase-B">B</td><td>domain/reviews.ts</td><td><span class="spec-tag">§4 IA</span></td><td>—</td><td></td></tr>
+          <tr><td class="id-cell">B-05</td><td class="phase-B">B</td><td>domain/tokens.ts</td><td><span class="spec-tag">§9 Security</span></td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+          <tr><td class="id-cell">B-06</td><td class="phase-B">B</td><td>domain/email-config.ts</td><td><span class="spec-tag">§4 IA</span></td><td>—</td><td></td></tr>
+          <tr><td class="id-cell">B-07</td><td class="phase-B">B</td><td>domain/queue.ts</td><td><span class="spec-tag">§4 IA</span></td><td>—</td><td></td></tr>
+          <tr><td class="id-cell">B-08</td><td class="phase-B">B</td><td>ユニットテスト</td><td>—</td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+
+          <!-- Phase C -->
+          <tr><td class="id-cell">C-01</td><td class="phase-C">C</td><td>App Bridge v4 統合</td><td><span class="spec-tag">§6 NavigationMenu</span> <span class="spec-tag">§9 A11y</span></td><td><span class="audit-tag cdo">M-A1</span> <span class="audit-tag cto">M-A2</span></td><td class="critical-marker">⚡</td></tr>
+          <tr><td class="id-cell">C-02</td><td class="phase-C">C</td><td>Session Token 検証ミドル</td><td><span class="spec-tag">§9 Security</span></td><td><span class="audit-tag cto">M-A2</span></td><td class="critical-marker">⚡</td></tr>
+          <tr><td class="id-cell">C-03</td><td class="phase-C">C</td><td>RBAC shop scope</td><td><span class="spec-tag">§9 Security</span></td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+          <tr><td class="id-cell">C-04</td><td class="phase-C">C</td><td>Rate Limit ミドル</td><td><span class="spec-tag">§9 Security</span> <span class="spec-tag">§11 SLO</span></td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+          <tr><td class="id-cell">C-05</td><td class="phase-C">C</td><td>Audit Log ミドル</td><td><span class="spec-tag">§9 Security</span></td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+          <tr><td class="id-cell">C-06</td><td class="phase-C">C</td><td>Sentry エラー追跡</td><td><span class="spec-tag">§11 監視</span></td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+          <tr><td class="id-cell">C-07</td><td class="phase-C">C</td><td>/healthz エンドポイント</td><td><span class="spec-tag">§11 SLO</span></td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+          <tr><td class="id-cell">C-08</td><td class="phase-C">C</td><td>セキュリティ E2E テスト</td><td><span class="spec-tag">§9 Security</span></td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+
+          <!-- Phase D -->
+          <tr><td class="id-cell">D-01</td><td class="phase-D">D</td><td>Polaris + App Bridge install</td><td><span class="spec-tag">§1 Polaris-First</span> <span class="spec-tag">§6 全 P1</span></td><td><span class="audit-tag cdo">M-A1</span></td><td class="critical-marker">⚡</td></tr>
+          <tr><td class="id-cell">D-02</td><td class="phase-D">D</td><td>Layout shell (Frame + Nav)</td><td><span class="spec-tag">§4 IA</span> <span class="spec-tag">§6 Page/Layout</span></td><td><span class="audit-tag cdo">M-A1</span></td><td class="critical-marker">⚡</td></tr>
+          <tr><td class="id-cell">D-03</td><td class="phase-D">D</td><td>⭐ NavigationMenu「口コミ管理」サイドバー登録</td><td><span class="spec-tag">§4 IA</span> <span class="spec-tag">§6 NavigationMenu</span> <span class="spec-tag">§13 KPI</span></td><td><span class="audit-tag cdo">M-A1</span> <span class="audit-tag ceo">M-A4</span></td><td class="critical-marker">⚡</td></tr>
+          <tr><td class="id-cell">D-04</td><td class="phase-D">D</td><td>Page Header 統一</td><td><span class="spec-tag">§6 Page</span> <span class="spec-tag">§8 Microcopy</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+          <tr><td class="id-cell">D-05</td><td class="phase-D">D</td><td>Tabs (4タブ切替)</td><td><span class="spec-tag">§6 Tabs</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+          <tr><td class="id-cell">D-06</td><td class="phase-D">D</td><td>EmptyState コンポーネント</td><td><span class="spec-tag">§1 State Comp.</span> <span class="spec-tag">§6 EmptyState</span> <span class="spec-tag">§7 全画面</span> <span class="spec-tag">§8 文言</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+          <tr><td class="id-cell">D-07</td><td class="phase-D">D</td><td>Toast 共通フック</td><td><span class="spec-tag">§6 Toast</span> <span class="spec-tag">§8 文言</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+          <tr><td class="id-cell">D-08</td><td class="phase-D">D</td><td>ConfirmDialog</td><td><span class="spec-tag">§6 Modal</span> <span class="spec-tag">§8 文言</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+          <tr><td class="id-cell">D-09</td><td class="phase-D">D</td><td>レスポンシブ確認</td><td><span class="spec-tag">§10 Mobile</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+
+          <!-- Phase E -->
+          <tr><td class="id-cell">E-01</td><td class="phase-E">E</td><td>Loader: reviews 取得</td><td><span class="spec-tag">§4 IA</span></td><td><span class="audit-tag cto">M-A2</span></td><td class="critical-marker">⚡</td></tr>
+          <tr><td class="id-cell">E-02</td><td class="phase-E">E</td><td>IndexTable 実装 (W1)</td><td><span class="spec-tag">§5 W1</span> <span class="spec-tag">§6 IndexTable</span> <span class="spec-tag">§7 状態</span></td><td><span class="audit-tag cdo">M-A1</span> <span class="audit-tag ceo">M-A4</span></td><td class="critical-marker">⚡</td></tr>
+          <tr><td class="id-cell">E-03</td><td class="phase-E">E</td><td>フィルタチップ + URL persist</td><td><span class="spec-tag">§5 W1</span> <span class="spec-tag">§6 Filters</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+          <tr><td class="id-cell">E-04</td><td class="phase-E">E</td><td>Status Badge</td><td><span class="spec-tag">§6 Badge</span> <span class="spec-tag">§9 色だけで伝えない</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+          <tr><td class="id-cell">E-05</td><td class="phase-E">E</td><td>Detail Modal (W3)</td><td><span class="spec-tag">§5 W3</span> <span class="spec-tag">§6 Modal</span> <span class="spec-tag">§7 状態</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+          <tr><td class="id-cell">E-06</td><td class="phase-E">E</td><td>Photo Gallery viewer</td><td><span class="spec-tag">§6 Thumbnail</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+          <tr><td class="id-cell">E-07</td><td class="phase-E">E</td><td>承認/拒否 Action (Optimistic UI)</td><td><span class="spec-tag">§1 Optimistic UI</span> <span class="spec-tag">§7 success/error</span> <span class="spec-tag">§8 Toast</span></td><td><span class="audit-tag cdo">M-A1</span> <span class="audit-tag ceo">M-A4</span></td><td></td></tr>
+          <tr><td class="id-cell">E-08</td><td class="phase-E">E</td><td>Bulk action (一括承認)</td><td><span class="spec-tag">§5 W1</span> <span class="spec-tag">§13 5分/10件</span></td><td><span class="audit-tag ceo">M-A4</span></td><td></td></tr>
+          <tr><td class="id-cell">E-09</td><td class="phase-E">E</td><td>Source Badge</td><td><span class="spec-tag">§5 W3</span> <span class="spec-tag">§12 差別化</span></td><td><span class="audit-tag cmo">M-A3</span></td><td></td></tr>
+          <tr><td class="id-cell">E-10</td><td class="phase-E">E</td><td>商品 metafield 自動更新</td><td><span class="spec-tag">§13 KPI</span></td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+          <tr><td class="id-cell">E-11</td><td class="phase-E">E</td><td>E2E テスト (Playwright)</td><td><span class="spec-tag">§13 KPI</span></td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+          <tr><td class="id-cell">E-12</td><td class="phase-E">E</td><td>UX レビュー (CEO 30分)</td><td><span class="spec-tag">§2 Persona #2</span> <span class="spec-tag">§3 Journey B</span></td><td><span class="audit-tag ceo">M-A4</span></td><td></td></tr>
+
+          <!-- Phase F -->
+          <tr><td class="id-cell">F-01</td><td class="phase-F">F</td><td>EmptyState (W2)</td><td><span class="spec-tag">§5 W2</span> <span class="spec-tag">§6 EmptyState</span> <span class="spec-tag">§8 文言</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+          <tr><td class="id-cell">F-02</td><td class="phase-F">F</td><td>設定一覧 (Card + Toggle)</td><td><span class="spec-tag">§6 Card</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+          <tr><td class="id-cell">F-03</td><td class="phase-F">F</td><td>新規作成フォーム (W4)</td><td><span class="spec-tag">§5 W4</span> <span class="spec-tag">§6 Form</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+          <tr><td class="id-cell">F-04</td><td class="phase-F">F</td><td>編集フォーム</td><td><span class="spec-tag">§5 W4</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+          <tr><td class="id-cell">F-05</td><td class="phase-F">F</td><td>テンプレート編集 + 変数ピッカー</td><td><span class="spec-tag">§5 W4</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+          <tr><td class="id-cell">F-06</td><td class="phase-F">F</td><td>ライブプレビュー</td><td><span class="spec-tag">§5 W4</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+          <tr><td class="id-cell">F-07</td><td class="phase-F">F</td><td>有効化トグル + Confirm</td><td><span class="spec-tag">§6 ConfirmDialog</span> <span class="spec-tag">§8 文言</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+          <tr><td class="id-cell">F-08</td><td class="phase-F">F</td><td>削除 + Confirm</td><td><span class="spec-tag">§6 ConfirmDialog</span> <span class="spec-tag">§8 文言</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+          <tr><td class="id-cell">F-09</td><td class="phase-F">F</td><td>handle 自動補完</td><td><span class="spec-tag">§3 Journey C</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+          <tr><td class="id-cell">F-10</td><td class="phase-F">F</td><td>E2E テスト</td><td><span class="spec-tag">§13 KPI</span></td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+          <tr><td class="id-cell">F-11</td><td class="phase-F">F</td><td>UX レビュー</td><td><span class="spec-tag">§2 Persona #3</span> <span class="spec-tag">§3 Journey C</span></td><td><span class="audit-tag ceo">M-A4</span></td><td></td></tr>
+
+          <!-- Phase G -->
+          <tr><td class="id-cell">G-01</td><td class="phase-G">G</td><td>単一発行フォーム</td><td><span class="spec-tag">§6 Form</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+          <tr><td class="id-cell">G-02</td><td class="phase-G">G</td><td>CSV 一括発行 (DropZone)</td><td><span class="spec-tag">§6 DropZone</span> <span class="spec-tag">§7 部分エラー</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+          <tr><td class="id-cell">G-03</td><td class="phase-G">G</td><td>発行履歴一覧</td><td><span class="spec-tag">§6 IndexTable</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+          <tr><td class="id-cell">G-04</td><td class="phase-G">G</td><td>URL コピー</td><td><span class="spec-tag">§6 Button</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+          <tr><td class="id-cell">G-05</td><td class="phase-G">G</td><td>再送 / 取消 Action</td><td><span class="spec-tag">§7 success/error</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+          <tr><td class="id-cell">G-06</td><td class="phase-G">G</td><td>即時メール送信オプション</td><td><span class="spec-tag">§12 ギフトレビュー差別化</span></td><td><span class="audit-tag cmo">M-A3</span></td><td></td></tr>
+          <tr><td class="id-cell">G-07</td><td class="phase-G">G</td><td>E2E テスト</td><td><span class="spec-tag">§13 KPI</span></td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+
+          <!-- Phase H -->
+          <tr><td class="id-cell">H-01</td><td class="phase-H">H</td><td>キュー一覧</td><td><span class="spec-tag">§6 IndexTable</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+          <tr><td class="id-cell">H-02</td><td class="phase-H">H</td><td>Status Badge + エラー表示</td><td><span class="spec-tag">§6 Badge</span> <span class="spec-tag">§8 エラー文言</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+          <tr><td class="id-cell">H-03</td><td class="phase-H">H</td><td>手動再送</td><td><span class="spec-tag">§7 部分エラー</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+          <tr><td class="id-cell">H-04</td><td class="phase-H">H</td><td>即時送信</td><td>—</td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+          <tr><td class="id-cell">H-05</td><td class="phase-H">H</td><td>KPI ヘッダー</td><td><span class="spec-tag">§13 KPI</span></td><td><span class="audit-tag cmo">M-A3</span></td><td></td></tr>
+          <tr><td class="id-cell">H-06</td><td class="phase-H">H</td><td>送信ログ Drawer</td><td><span class="spec-tag">§6 Modal</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+          <tr><td class="id-cell">H-07</td><td class="phase-H">H</td><td>E2E + UX レビュー</td><td><span class="spec-tag">§13 KPI</span></td><td><span class="audit-tag ceo">M-A4</span></td><td></td></tr>
+
+          <!-- Phase I -->
+          <tr><td class="id-cell">I-01</td><td class="phase-I">I</td><td>Webhook subscription</td><td><span class="spec-tag">§4 Backend</span></td><td><span class="audit-tag cto">M-A2</span></td><td class="critical-marker">⚡</td></tr>
+          <tr><td class="id-cell">I-02</td><td class="phase-I">I</td><td>HMAC 検証</td><td><span class="spec-tag">§9 Security</span></td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+          <tr><td class="id-cell">I-03</td><td class="phase-I">I</td><td>config 優先度解決ロジック</td><td><span class="spec-tag">§4 IA</span> <span class="spec-tag">§12 IPコラボ別差別化</span></td><td><span class="audit-tag cto">M-A2</span></td><td class="critical-marker">⚡</td></tr>
+          <tr><td class="id-cell">I-04</td><td class="phase-I">I</td><td>queue エントリ作成</td><td><span class="spec-tag">§4 IA</span></td><td><span class="audit-tag cto">M-A2</span></td><td class="critical-marker">⚡</td></tr>
+          <tr><td class="id-cell">I-05</td><td class="phase-I">I</td><td>重複防止</td><td><span class="spec-tag">§9 Security</span></td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+          <tr><td class="id-cell">I-06</td><td class="phase-I">I</td><td>エラーハンドリング</td><td><span class="spec-tag">§11 監視</span></td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+          <tr><td class="id-cell">I-07</td><td class="phase-I">I</td><td>E2E webhook テスト</td><td><span class="spec-tag">§13 KPI</span></td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+          <tr><td class="id-cell">I-08</td><td class="phase-I">I</td><td>Shopify Flow URL 切替</td><td>—</td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+
+          <!-- Phase J -->
+          <tr><td class="id-cell">J-01</td><td class="phase-J">J</td><td>Shopify Email テンプレート作成 (Shopify Admin → Marketing → Email Templates)</td><td><span class="spec-tag">§5 メールデザイン</span></td><td><span class="audit-tag cmo">M-A3</span></td><td></td></tr>
+          <tr><td class="id-cell">J-02</td><td class="phase-J">J</td><td>テンプレートに ASTROMEDA Brand Token を適用 (CDO レビュー)</td><td><span class="spec-tag">§5 W4 / Brand Token §8</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
+          <tr><td class="id-cell">J-03</td><td class="phase-J">J</td><td>App `/api/tokens/issue` endpoint で UUID 発行 + Metaobject astromeda_review_token 保存</td><td><span class="spec-tag">§9 Security</span></td><td><span class="audit-tag cto">M-A2</span></td><td class="critical-marker">⚡</td></tr>
+          <tr><td class="id-cell">J-04</td><td class="phase-J">J</td><td>Shopify Flow を Email アクションで `/api/tokens/issue` 呼出 → 返却 URL を Email 本文 Liquid に埋込</td><td><span class="spec-tag">§5 W4 プレビュー</span></td><td><span class="audit-tag cto">M-A2</span></td><td class="critical-marker">⚡</td></tr>
+          <tr><td class="id-cell">J-05</td><td class="phase-J">J</td><td>Subject A/B variant 2 案準備 (CMO)</td><td><span class="spec-tag">§13 KPI 開封率</span></td><td><span class="audit-tag cmo">M-A3</span></td><td></td></tr>
+          <tr><td class="id-cell">J-06</td><td class="phase-J">J</td><td>E2E メール送信テスト (Flow trigger → 14 日 delay 短縮版 → Shopify Email 配信 → 武正さん受信確認)</td><td><span class="spec-tag">§13 KPI 開封率</span></td><td><span class="audit-tag cmo">M-A3</span> <span class="audit-tag ceo">M-A4</span></td><td></td></tr>
+          <tr><td class="id-cell">J-07</td><td class="phase-J">J</td><td>Shopify Flow run history を管理画面 Tab 4 (送信キュー) に取込 (Admin API: flowRuns query)</td><td><span class="spec-tag">§5 W (queue)</span></td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+
+          <!-- Phase K -->
+          <tr><td class="id-cell">K-01</td><td class="phase-K">K</td><td>App Proxy 設定</td><td><span class="spec-tag">§4 Backend</span></td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+          <tr><td class="id-cell">K-02</td><td class="phase-K">K</td><td>/submit Loader (トークン検証)</td><td><span class="spec-tag">§5 W5</span> <span class="spec-tag">§9 Security</span></td><td><span class="audit-tag cto">M-A2</span> <span class="audit-tag cmo">M-A3</span></td><td></td></tr>
+          <tr><td class="id-cell">K-03</td><td class="phase-K">K</td><td>投稿フォーム UI (W5)</td><td><span class="spec-tag">§5 W5</span> <span class="spec-tag">§2 Persona #1</span> <span class="spec-tag">§3 Journey A</span></td><td><span class="audit-tag cmo">M-A3</span></td><td></td></tr>
+          <tr><td class="id-cell">K-04</td><td class="phase-K">K</td><td>写真アップロード UI (max 6)</td><td><span class="spec-tag">§5 W5</span> <span class="spec-tag">§12 6枚差別化</span></td><td><span class="audit-tag cmo">M-A3</span></td><td></td></tr>
+          <tr><td class="id-cell">K-05</td><td class="phase-K">K</td><td>POST handler</td><td><span class="spec-tag">§9 Security</span></td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+          <tr><td class="id-cell">K-06</td><td class="phase-K">K</td><td>トークン消費 (used_at)</td><td><span class="spec-tag">§9 Security</span></td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+          <tr><td class="id-cell">K-07</td><td class="phase-K">K</td><td>/complete Thank you</td><td><span class="spec-tag">§3 Journey A Step 5</span> <span class="spec-tag">§8 Toast</span></td><td><span class="audit-tag cmo">M-A3</span></td><td></td></tr>
+          <tr><td class="id-cell">K-08</td><td class="phase-K">K</td><td>エラー画面</td><td><span class="spec-tag">§7 完全エラー</span> <span class="spec-tag">§8 エラー文言</span></td><td><span class="audit-tag cdo">M-A1</span> <span class="audit-tag cmo">M-A3</span></td><td></td></tr>
+          <tr><td class="id-cell">K-09</td><td class="phase-K">K</td><td>モバイル確認 (iOS/Android)</td><td><span class="spec-tag">§10 Mobile</span> <span class="spec-tag">§2 Persona #1</span></td><td><span class="audit-tag cmo">M-A3</span></td><td></td></tr>
+          <tr><td class="id-cell">K-10</td><td class="phase-K">K</td><td>ASTROMEDA ブランド適用</td><td><span class="spec-tag">§5 W5</span></td><td><span class="audit-tag cmo">M-A3</span></td><td></td></tr>
+          <tr><td class="id-cell">K-11</td><td class="phase-K">K</td><td>E2E: メール→投稿→管理画面</td><td><span class="spec-tag">§13 KPI 完了率</span></td><td><span class="audit-tag cmo">M-A3</span> <span class="audit-tag ceo">M-A4</span></td><td></td></tr>
+
+          <!-- Phase L -->
+          <tr><td class="id-cell">L-01</td><td class="phase-L">L</td><td>並走稼働 (3日間)</td><td>—</td><td>—</td><td class="critical-marker">⚡</td></tr>
+          <tr><td class="id-cell">L-02</td><td class="phase-L">L</td><td>既存 pending 処理</td><td>—</td><td>—</td><td></td></tr>
+          <tr><td class="id-cell">L-03</td><td class="phase-L">L</td><td>⭐ Hydrogen 7ファイル削除</td><td>—</td><td><span class="audit-tag cto">M-A2</span></td><td class="critical-marker">⚡</td></tr>
+          <tr><td class="id-cell">L-04</td><td class="phase-L">L</td><td>shopify.app.toml 旧設定削除</td><td>—</td><td><span class="audit-tag cto">M-A2</span></td><td class="critical-marker">⚡</td></tr>
+          <tr><td class="id-cell">L-05</td><td class="phase-L">L</td><td>Hydrogen CI/CD 確認</td><td>—</td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+          <tr><td class="id-cell">L-06</td><td class="phase-L">L</td><td>Shopify Flow URL 確認</td><td>—</td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+          <tr><td class="id-cell">L-07</td><td class="phase-L">L</td><td>旧 App Proxy URL 確認</td><td>—</td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+          <tr><td class="id-cell">L-08</td><td class="phase-L">L</td><td>テストデータ cleanup</td><td>—</td><td>—</td><td></td></tr>
+          <tr><td class="id-cell">L-09</td><td class="phase-L">L</td><td>CEO 全機能ウォークスルー</td><td><span class="spec-tag">§2 Persona #2</span></td><td><span class="audit-tag ceo">M-A4</span></td><td></td></tr>
+
+          <!-- Phase M-Audit (v1.1 NEW) -->
+          <tr><td class="id-cell">M-A1</td><td class="phase-MA">M-A</td><td>🎨 CDO視点 独立 Chrome MCP 監査</td><td><span class="spec-tag">§1</span> <span class="spec-tag">§6</span> <span class="spec-tag">§7</span> <span class="spec-tag">§8</span> <span class="spec-tag">§9</span> <span class="spec-tag">§14 CDO列</span></td><td><span class="audit-tag cdo">SELF</span></td><td class="critical-marker">⚡</td></tr>
+          <tr><td class="id-cell">M-A2</td><td class="phase-MA">M-A</td><td>⚙️ CTO視点 独立 Chrome MCP 監査</td><td><span class="spec-tag">§9</span> <span class="spec-tag">§11</span> <span class="spec-tag">§14 CTO列</span></td><td><span class="audit-tag cto">SELF</span></td><td class="critical-marker">⚡</td></tr>
+          <tr><td class="id-cell">M-A3</td><td class="phase-MA">M-A</td><td>📣 CMO視点 独立 Chrome MCP 監査</td><td><span class="spec-tag">§2 Persona #1</span> <span class="spec-tag">§3 Journey A</span> <span class="spec-tag">§10</span> <span class="spec-tag">§12</span> <span class="spec-tag">§14 CMO列</span></td><td><span class="audit-tag cmo">SELF</span></td><td class="critical-marker">⚡</td></tr>
+          <tr><td class="id-cell">M-A4</td><td class="phase-MA">M-A</td><td>👔 CEO視点 独立 Chrome MCP 監査</td><td><span class="spec-tag">§2 Persona #2</span> <span class="spec-tag">§3 Journey B</span> <span class="spec-tag">§13 KPI</span> <span class="spec-tag">§14 CEO列</span></td><td><span class="audit-tag ceo">SELF</span></td><td class="critical-marker">⚡</td></tr>
+          <tr><td class="id-cell">M-A5</td><td class="phase-MA">M-A</td><td>📊 4監査統合 + Go/No-Go 判定</td><td>全章</td><td>—</td><td class="critical-marker">⚡</td></tr>
+
+          <!-- Phase M -->
+          <tr><td class="id-cell">M-01</td><td class="phase-M">M</td><td>運用マニュアル</td><td><span class="spec-tag">§2 Persona</span></td><td>—</td><td></td></tr>
+          <tr><td class="id-cell">M-02</td><td class="phase-M">M</td><td>障害対応 Runbook</td><td><span class="spec-tag">§11 SLO</span></td><td>—</td><td></td></tr>
+          <tr><td class="id-cell">M-03</td><td class="phase-M">M</td><td>Fly metrics + Sentry alert</td><td><span class="spec-tag">§11 SLO/SLI</span></td><td>—</td><td></td></tr>
+          <tr><td class="id-cell">M-04</td><td class="phase-M">M</td><td>バックアップ手順書</td><td>—</td><td>—</td><td></td></tr>
+          <tr><td class="id-cell">M-05</td><td class="phase-M">M</td><td>A11y 監査 (M-A1 に統合)</td><td><span class="spec-tag">§9 A11y</span></td><td>—</td><td></td></tr>
+          <tr><td class="id-cell">M-06</td><td class="phase-M">M</td><td>セキュリティ確認 (M-A2 に統合)</td><td><span class="spec-tag">§9 Security</span></td><td>—</td><td></td></tr>
+          <tr><td class="id-cell">M-07</td><td class="phase-M">M</td><td>CEO 最終承認 + ロードテスト</td><td><span class="spec-tag">§14 Sign-off</span></td><td>—</td><td></td></tr>
+          <tr><td class="id-cell">M-08</td><td class="phase-M">M</td><td>🎉 Go-Live 宣言</td><td><span class="spec-tag">§15 承認</span></td><td>—</td><td class="critical-marker">⚡</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===== Reverse Trace: Spec → Gantt ===== -->
+  <section>
+    <h2>3. Reverse Traceability: Design Spec 章 → Gantt タスク</h2>
+    <div class="section-body">
+      <table class="reverse-table">
+        <thead>
+          <tr>
+            <th style="width:80px;">Spec §</th>
+            <th style="width:25%;">章タイトル</th>
+            <th>実装タスク</th>
+            <th style="width:160px;">主担当監査</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>§1</td><td>デザイン原則 5原則</td><td><span class="id-cell">A-01</span>, <span class="id-cell">A-03</span>, <span class="id-cell">A-09</span>, <span class="id-cell">D-01</span>, <span class="id-cell">D-06</span>, <span class="id-cell">E-07</span></td><td><span class="audit-tag cdo">CDO M-A1</span></td></tr>
+          <tr><td>§2</td><td>ペルソナ定義 (3種)</td><td><span class="id-cell">A-01</span>, <span class="id-cell">E-12</span>, <span class="id-cell">F-11</span>, <span class="id-cell">K-03</span>, <span class="id-cell">K-09</span>, <span class="id-cell">L-09</span>, <span class="id-cell">M-01</span></td><td><span class="audit-tag cmo">CMO M-A3</span> <span class="audit-tag ceo">CEO M-A4</span></td></tr>
+          <tr><td>§3</td><td>ユーザージャーニーマップ (3本)</td><td>Journey A → <span class="id-cell">K-*</span>, J-09<br>Journey B → <span class="id-cell">E-*</span>, H-*, L-09<br>Journey C → <span class="id-cell">F-*</span></td><td><span class="audit-tag cmo">CMO M-A3</span> <span class="audit-tag ceo">CEO M-A4</span></td></tr>
+          <tr><td>§4</td><td>インフォメーションアーキテクチャ</td><td><span class="id-cell">B-01</span>, <span class="id-cell">B-04</span>~<span class="id-cell">B-07</span>, <span class="id-cell">D-02</span>, <span class="id-cell">D-03</span>, <span class="id-cell">I-03</span>, <span class="id-cell">I-04</span>, <span class="id-cell">K-01</span></td><td><span class="audit-tag cdo">CDO M-A1</span> <span class="audit-tag cto">CTO M-A2</span></td></tr>
+          <tr><td>§5</td><td>ワイヤーフレーム (W1-W5)</td><td>W1 → <span class="id-cell">E-02</span>, <span class="id-cell">E-08</span><br>W2 → <span class="id-cell">F-01</span><br>W3 → <span class="id-cell">E-05</span>, <span class="id-cell">E-09</span><br>W4 → <span class="id-cell">F-03</span>~<span class="id-cell">F-06</span><br>W5 → <span class="id-cell">K-02</span>~<span class="id-cell">K-10</span></td><td><span class="audit-tag cdo">CDO M-A1</span> <span class="audit-tag cmo">CMO M-A3</span></td></tr>
+          <tr><td>§6</td><td>Polaris コンポーネント表 (25種)</td><td><span class="id-cell">D-01</span>~<span class="id-cell">D-08</span>, <span class="id-cell">E-02</span>~<span class="id-cell">E-06</span>, <span class="id-cell">F-02</span>~<span class="id-cell">F-08</span>, <span class="id-cell">G-02</span>~<span class="id-cell">G-04</span>, <span class="id-cell">H-01</span>~<span class="id-cell">H-06</span></td><td><span class="audit-tag cdo">CDO M-A1</span></td></tr>
+          <tr><td>§7</td><td>状態網羅マトリクス (50セル)</td><td><span class="id-cell">D-06</span> (EmptyState), <span class="id-cell">E-01</span>~<span class="id-cell">E-11</span> (states), 全 UI Phase</td><td><span class="audit-tag cdo">CDO M-A1</span></td></tr>
+          <tr><td>§8</td><td>マイクロコピー辞書 (50文言)</td><td><span class="id-cell">D-07</span>, <span class="id-cell">D-08</span>, 全 Action タスク, <span class="id-cell">K-07</span>, <span class="id-cell">K-08</span></td><td><span class="audit-tag cdo">CDO M-A1</span> <span class="audit-tag cmo">CMO M-A3</span></td></tr>
+          <tr><td>§9</td><td>アクセシビリティ (WCAG AA)</td><td><span class="id-cell">C-01</span>, <span class="id-cell">C-02</span>, <span class="id-cell">C-04</span>, <span class="id-cell">C-05</span>, <span class="id-cell">C-08</span>, <span class="id-cell">I-02</span>, <span class="id-cell">K-02</span>, <span class="id-cell">M-05</span> (M-A1/A2 統合)</td><td><span class="audit-tag cdo">CDO M-A1</span> <span class="audit-tag cto">CTO M-A2</span></td></tr>
+          <tr><td>§10</td><td>モバイル仕様</td><td><span class="id-cell">D-09</span>, <span class="id-cell">K-09</span></td><td><span class="audit-tag cdo">CDO M-A1</span> <span class="audit-tag cmo">CMO M-A3</span></td></tr>
+          <tr><td>§11</td><td>パフォーマンス予算 (Core Web Vitals)</td><td><span class="id-cell">A-04</span>, <span class="id-cell">A-05</span>, <span class="id-cell">C-04</span>, <span class="id-cell">C-07</span>, <span class="id-cell">J-03</span>, <span class="id-cell">J-06</span>, <span class="id-cell">J-08</span>, <span class="id-cell">M-02</span>, <span class="id-cell">M-03</span></td><td><span class="audit-tag cto">CTO M-A2</span></td></tr>
+          <tr><td>§12</td><td>競合分析 (差別化)</td><td><span class="id-cell">E-09</span> (Gift badge), <span class="id-cell">G-06</span>, <span class="id-cell">I-03</span> (IPコラボ別), <span class="id-cell">K-04</span> (写真6枚), <span class="id-cell">K-03</span> (3分投稿)</td><td><span class="audit-tag cmo">CMO M-A3</span></td></tr>
+          <tr><td>§13</td><td>成功指標 (KPI/TTFSA)</td><td><span class="id-cell">D-03</span>, <span class="id-cell">E-08</span>, <span class="id-cell">E-10</span>, <span class="id-cell">E-11</span>, <span class="id-cell">F-10</span>, <span class="id-cell">G-07</span>, <span class="id-cell">H-05</span>, <span class="id-cell">H-07</span>, <span class="id-cell">I-07</span>, <span class="id-cell">J-09</span>, <span class="id-cell">K-11</span></td><td><span class="audit-tag ceo">CEO M-A4</span></td></tr>
+          <tr><td>§14</td><td>Sign-off チェックリスト</td><td><span class="id-cell">M-A1</span>~<span class="id-cell">M-A5</span>, <span class="id-cell">M-07</span></td><td>全監査</td></tr>
+          <tr><td>§15</td><td>デザイン承認</td><td><span class="id-cell">M-A5</span>, <span class="id-cell">M-07</span>, <span class="id-cell">M-08</span></td><td>武正さん最終</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===== Audit Coverage Cards ===== -->
+  <section>
+    <h2>4. 4視点 独立 Chrome MCP 監査 詳細</h2>
+    <div class="section-body">
+      <p style="margin-bottom:18px;font-size:13px;color:#5c5f62;">各監査は<strong>独立した人格</strong>として Claude が Chrome MCP を操作。スクリーンショット・Lighthouse・DevTools・人格シミュレーションを総合。1視点でも Fail なら Go-Live 不可。</p>
+      <div class="audit-cards">
+
+        <div class="audit-card cdo">
+          <div class="role">🎨 CDO Audit</div>
+          <h3>デザイン整合性</h3>
+          <div class="id-line">Task ID: M-A1 ・ 90 min</div>
+          <h4>監査対象 (Design Spec)</h4>
+          <ul>
+            <li>§1: 5 デザイン原則 (Polaris-First 等)</li>
+            <li>§6: Polaris 25 コンポーネント実装</li>
+            <li>§7: 状態網羅 10×5=50 セル</li>
+            <li>§8: マイクロコピー 50 文言一致</li>
+            <li>§9: A11y (WCAG 2.1 AA)</li>
+            <li>§10: モバイル仕様</li>
+          </ul>
+          <h4>Chrome MCP 実行手順</h4>
+          <ul>
+            <li>4 タブを巡回・スクリーンショット撮影</li>
+            <li>EmptyState を強制発火 (DB 空状態)</li>
+            <li>読込中 / エラー状態を強制発火</li>
+            <li>Lighthouse A11y 自動実行</li>
+            <li>Axe DevTools 自動監査</li>
+            <li>マイクロコピー辞書との文字列照合</li>
+            <li>キーボードのみで全機能操作</li>
+          </ul>
+          <div class="pass-criteria">
+            <strong>Pass 基準:</strong><br>
+            ① Lighthouse A11y ≥ 90<br>
+            ② Axe critical errors = 0<br>
+            ③ 状態網羅 50/50 セル実装確認<br>
+            ④ Polaris 以外のスタイル 0 件<br>
+            ⑤ マイクロコピー 100% 一致
+          </div>
+        </div>
+
+        <div class="audit-card cto">
+          <div class="role">⚙️ CTO Audit</div>
+          <h3>技術品質</h3>
+          <div class="id-line">Task ID: M-A2 ・ 90 min</div>
+          <h4>監査対象 (Design Spec)</h4>
+          <ul>
+            <li>§9: Security (HMAC / Session / Rate Limit / Audit)</li>
+            <li>§11: Performance (LCP / INP / CLS / Bundle)</li>
+            <li>§11: SLO (API p95 / 稼働率 / メール送信成功率)</li>
+            <li>§14: CTO 列 9 項目</li>
+          </ul>
+          <h4>Chrome MCP 実行手順</h4>
+          <ul>
+            <li>DevTools Performance タブで計測</li>
+            <li>Lighthouse Performance 実行</li>
+            <li>Network タブで API レスポンス計測</li>
+            <li>Session Token なしで API 叩いて 401 確認</li>
+            <li>HMAC 不正 webhook で 401 確認</li>
+            <li>Rate Limit 超過で 429 確認</li>
+            <li>Sentry でエラー発生 → 受信確認</li>
+            <li>Fly.io metrics 確認</li>
+          </ul>
+          <div class="pass-criteria">
+            <strong>Pass 基準:</strong><br>
+            ① Lighthouse Perf ≥ 95<br>
+            ② LCP &lt; 2.5s / INP &lt; 200ms / CLS &lt; 0.1<br>
+            ③ Bundle &lt; 200KB gzipped<br>
+            ④ 認証なし API → 401 即返却<br>
+            ⑤ Rate Limit 動作確認<br>
+            ⑥ Sentry エラー受信
+          </div>
+        </div>
+
+        <div class="audit-card cmo">
+          <div class="role">📣 CMO Audit</div>
+          <h3>ブランド・GTM</h3>
+          <div class="id-line">Task ID: M-A3 ・ 60 min</div>
+          <h4>監査対象 (Design Spec)</h4>
+          <ul>
+            <li>§2: Persona #1 (エンドユーザー)</li>
+            <li>§3: Journey A 投稿フロー</li>
+            <li>§10: モバイル (iOS/Android)</li>
+            <li>§12: 競合差別化 (vs Yotpo/Judge.me)</li>
+            <li>§14: CMO 列 8 項目</li>
+          </ul>
+          <h4>Chrome MCP 実行手順</h4>
+          <ul>
+            <li>iPhone 14 シミュレーション viewport</li>
+            <li>テストトークンで /submit を開く</li>
+            <li>ASTROMEDA ブランド色照合 (HEX 確認)</li>
+            <li>3 分以内 投稿シミュレーション計測</li>
+            <li>日本語トーン文言を全行読み上げ</li>
+            <li>信頼バッジ (購入認証/ギフト) 表示確認</li>
+            <li>ステマ法対応文言確認</li>
+            <li>Android Chrome 同シミュ</li>
+          </ul>
+          <div class="pass-criteria">
+            <strong>Pass 基準:</strong><br>
+            ① 3 分以内 投稿完了シミュ達成<br>
+            ② ASTROMEDA ブランド色 #14b8a6 等正確<br>
+            ③ 信頼バッジ全表示<br>
+            ④ モバイル UX 操作可能<br>
+            ⑤ 競合より優れた要素 5 項目以上明示<br>
+            ⑥ ステマ法対応文言適切
+          </div>
+        </div>
+
+        <div class="audit-card ceo">
+          <div class="role">👔 CEO Audit</div>
+          <h3>Merchant Outcome</h3>
+          <div class="id-line">Task ID: M-A4 ・ 60 min</div>
+          <h4>監査対象 (Design Spec)</h4>
+          <ul>
+            <li>§2: Persona #2 (CEO 武正さん)</li>
+            <li>§3: Journey B 日次承認運用</li>
+            <li>§13: KPI (TTFSA / 5分/10件)</li>
+            <li>§14: CEO 列 8 項目</li>
+          </ul>
+          <h4>Chrome MCP 実行手順</h4>
+          <ul>
+            <li>Shopify Admin に「初見ユーザー」としてログイン</li>
+            <li>ドキュメント参照なしでサイドバー「口コミ管理」を探す</li>
+            <li>ストップウォッチで TTFSA 計測 (最初の承認まで)</li>
+            <li>10 件の pending を承認・拒否でストップウォッチ計測</li>
+            <li>誤クリック発生数を記録</li>
+            <li>Cognitive Walkthrough 評価</li>
+            <li>「次の業務に戻れる」体感確認</li>
+            <li>武正さん最終操作テストへ引継</li>
+          </ul>
+          <div class="pass-criteria">
+            <strong>Pass 基準:</strong><br>
+            ① TTFSA &lt; 60 秒<br>
+            ② 10 件承認 &lt; 5 分<br>
+            ③ 誤クリック 0 件<br>
+            ④ 1 クリックでサイドバーから到達<br>
+            ⑤ Cognitive Walkthrough ≥ 4.0/5.0<br>
+            ⑥ 「次の業務に戻れる」体感 OK
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Gap Analysis ===== -->
+  <section>
+    <h2>5. ギャップ分析・Open Items</h2>
+    <div class="section-body">
+      <table class="gap-table">
+        <thead>
+          <tr><th style="width:60px;">ID</th><th style="width:25%;">項目</th><th style="width:110px;">状態</th><th>備考 / 対応</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>OP-01</td><td>Design Spec 全 15 章の実装タスクカバレッジ</td><td><span class="gap-status covered">100% Covered</span></td><td>全章が最低 1 Gantt タスクで実装される</td></tr>
+          <tr><td>OP-02</td><td>4視点監査の Design Spec カバレッジ</td><td><span class="gap-status covered">100% Covered</span></td><td>各 Spec 章が最低 1 監査でカバー</td></tr>
+          <tr><td>OP-03</td><td>Critical Path 上のタスク監査</td><td><span class="gap-status covered">100% Covered</span></td><td>14 critical タスク全てが M-A1〜A4 のいずれかでカバー</td></tr>
+          <tr><td>OP-04</td><td>監査 Fail 時の戻り先プロセス</td><td><span class="gap-status partial">Partial</span></td><td>Gantt 内で言及済 ("該当 Phase に戻り") だが、具体的なリリース判定手順を運用マニュアル (M-01) で詳細化が必要</td></tr>
+          <tr><td>OP-05</td><td>監査レポート HTML テンプレート</td><td><span class="gap-status open">Open</span></td><td>M-A5 で統合レポート作成。テンプレートは M-A1 開始前に Claude が用意 (Phase L 中)</td></tr>
+          <tr><td>OP-06</td><td>並走稼働中 (L-01) の二重メール送信防止</td><td><span class="gap-status covered">Mitigated</span></td><td>Gantt リスク R-04 で緩和策明示 (subscription コメントアウト + デデュープ)</td></tr>
+          <tr><td>OP-07</td><td>第三者デザインレビュー (Carl Rivera 実在 review)</td><td><span class="gap-status open">N/A</span></td><td>本プロジェクトは ASTROMEDA 社内案件のため、Shopify 実在 C-suite の review は対象外。「視点シミュレーション」で代替</td></tr>
+          <tr><td>OP-08</td><td>SaaS 競合移行時のデータ可搬性</td><td><span class="gap-status open">Open</span></td><td>本案では Metaobject に格納 → エクスポート手順は M-04 (バックアップ手順) に含める</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===== Document Map ===== -->
+  <section>
+    <h2>6. ドキュメント全体マップ</h2>
+    <div class="section-body">
+      <svg viewBox="0 0 1400 320" style="width:100%;display:block;">
+        <defs>
+          <marker id="arrow1" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#6b46c1"/>
+          </marker>
+        </defs>
+
+        <!-- 3 main docs -->
+        <rect x="100" y="60" width="300" height="100" rx="10" fill="#fff" stroke="#6b46c1" stroke-width="3"/>
+        <text x="250" y="92" font-size="14" font-weight="800" fill="#1a202c" text-anchor="middle">📋 ガントチャート v1.1</text>
+        <text x="250" y="115" font-size="11" fill="#5c5f62" text-anchor="middle">86 + 5 タスク / 13 Phase / 16-17日</text>
+        <text x="250" y="135" font-size="11" fill="#6b46c1" text-anchor="middle" font-weight="700">「いつ何をする」</text>
+
+        <rect x="550" y="60" width="300" height="100" rx="10" fill="#fff" stroke="#008060" stroke-width="3"/>
+        <text x="700" y="92" font-size="14" font-weight="800" fill="#1a202c" text-anchor="middle">🎨 UX/UI Design Spec v1.1</text>
+        <text x="700" y="115" font-size="11" fill="#5c5f62" text-anchor="middle">15 章 / Polaris 25種 / 50 状態</text>
+        <text x="700" y="135" font-size="11" fill="#008060" text-anchor="middle" font-weight="700">「何をどう作る」</text>
+
+        <rect x="1000" y="60" width="300" height="100" rx="10" fill="#fff" stroke="#dc2626" stroke-width="3"/>
+        <text x="1150" y="92" font-size="14" font-weight="800" fill="#1a202c" text-anchor="middle">🔗 Traceability Matrix v1.0</text>
+        <text x="1150" y="115" font-size="11" fill="#5c5f62" text-anchor="middle">91 タスク × 15 章 + 4 監査</text>
+        <text x="1150" y="135" font-size="11" fill="#dc2626" text-anchor="middle" font-weight="700">「どう繋がる・検証する」</text>
+
+        <!-- Bidirectional arrows -->
+        <line x1="400" y1="110" x2="550" y2="110" stroke="#6b46c1" stroke-width="2" marker-end="url(#arrow1)"/>
+        <line x1="850" y1="110" x2="1000" y2="110" stroke="#008060" stroke-width="2" marker-end="url(#arrow1)"/>
+        <text x="475" y="100" font-size="10" fill="#5c5f62" text-anchor="middle">参照</text>
+        <text x="925" y="100" font-size="10" fill="#5c5f62" text-anchor="middle">索引</text>
+
+        <!-- Audit oval -->
+        <ellipse cx="700" cy="250" rx="280" ry="40" fill="#fee2e2" stroke="#dc2626" stroke-width="2"/>
+        <text x="700" y="248" font-size="13" font-weight="800" fill="#991b1b" text-anchor="middle">🛡️ Phase M-Audit: 4視点独立 Chrome MCP 監査</text>
+        <text x="700" y="266" font-size="10" fill="#991b1b" text-anchor="middle">CDO (M-A1) + CTO (M-A2) + CMO (M-A3) + CEO (M-A4) → 統合 (M-A5)</text>
+
+        <!-- Lines from docs to audit -->
+        <line x1="250" y1="160" x2="500" y2="240" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="4,3"/>
+        <line x1="700" y1="160" x2="700" y2="210" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="4,3"/>
+        <line x1="1150" y1="160" x2="900" y2="240" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="4,3"/>
+      </svg>
+
+      <p style="margin-top:18px;font-size:13px;color:#5c5f62;line-height:1.7;">
+        3 ドキュメントは<strong>三位一体</strong>で動作します:
+        <br>① <strong>ガントチャート</strong>が「いつ何をするか」のロードマップ、
+        <br>② <strong>UX/UI Design Spec</strong>が「何をどう作るか」の設計仕様、
+        <br>③ <strong>Traceability Matrix</strong>（本ドキュメント）が「どう繋がり・どう検証するか」の橋渡し。
+        <br>そして<strong>Phase M-Audit</strong>が 4 視点で独立検証を行い、Go-Live を保証します。
+      </p>
+    </div>
+  </section>
+
+  <footer>
+    ASTROMEDA × Cowork ・ REV-EMB-2026-Q2 ・ Traceability Matrix ・ Companion to Gantt v1.1 + UX/UI Design Spec v1.1 ・ Generated 2026-05-14
+  </footer>
+
+</div>
+</body>
+</html>

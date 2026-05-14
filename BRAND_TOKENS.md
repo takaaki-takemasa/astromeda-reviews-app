@@ -18,7 +18,7 @@ Shopify Polaris の標準デザイントークンを上書きし、ASTROMEDA ブ
 |---|---|---|
 | Shopify Admin Embedded App (4タブ) | ✅ Polaris extension via CSS variables | App Bridge 互換性を維持 |
 | App Proxy 公開フォーム (`/apps/reviews/submit`) | ✅ Custom CSS + Polaris-aligned tokens | お客様タッチポイント |
-| SendGrid 自動送信メール (HTML) | ✅ Inline CSS only (email client compat) | A-J-10 で展開 |
+| Shopify Email テンプレート (HTML / Liquid) | ✅ Inline CSS only (email client compat) | A-J-10 で展開 |
 | Storefront レビュー表示 (Hydrogen) | ⚠️ Phase L で別途整合 | 本プロジェクト範囲外 |
 
 ---
@@ -265,9 +265,9 @@ App Proxy `/apps/reviews/submit` は Polaris の外側で動く（Shopify Storef
 
 ---
 
-## 8. メール (SendGrid) 用トークン
+## 8. メール (Shopify Email / Liquid) 用トークン
 
-メールクライアント互換性のため、**全て inline style** で書く。CSS 変数は使えない。
+Shopify Email のテンプレートエディタで使用。メールクライアント互換性のため、**全て inline style** で書く。CSS 変数は使えない。Shopify Email は Liquid に対応しているため、`{{ customer.first_name }}` 等の変数置換も可。
 
 ### カラー (HEX 直値)
 
@@ -376,11 +376,4 @@ app/
 | v1.0 | 2026-05-15 | 初版起案（CDO Phase A-10） | CDO (Claude) |
 | (v1.1) | TBD | Phase D-10 Foundation Review 後の調整 | CDO + CEO |
 
----
-
-## 承認
-
-| 役職 | 氏名 | 日付 | 署名 |
-|---|---|---|---|
-| CDO (assigned to Claude) | Claude Sonnet 4 | 2026-05-15 | ✓ 起案 |
-| CEO | 武正貴昭 | _____ | _________________ |
+--

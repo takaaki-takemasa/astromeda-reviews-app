@@ -1,0 +1,1286 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>口コミ機能 Embedded App 移行 プロジェクト計画書 v1.0 | ASTROMEDA</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+    background: #f5f7fa;
+    color: #1a202c;
+    line-height: 1.6;
+    padding: 32px 24px 80px;
+  }
+  .container { max-width: 1640px; margin: 0 auto; }
+  .cover {
+    background: linear-gradient(135deg, #0a0e27 0%, #1a1f4a 50%, #0d2d5c 100%);
+    color: #fff;
+    padding: 64px 56px;
+    border-radius: 16px;
+    margin-bottom: 32px;
+    box-shadow: 0 20px 60px rgba(10, 14, 39, 0.3);
+    position: relative;
+    overflow: hidden;
+  }
+  .cover::before {
+    content: '';
+    position: absolute;
+    top: -40%; right: -10%;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(99,179,255,0.15) 0%, transparent 70%);
+  }
+  .cover-label {
+    font-size: 11px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: #63b3ff;
+    margin-bottom: 16px;
+    font-weight: 600;
+  }
+  .cover h1 {
+    font-size: 38px;
+    font-weight: 800;
+    margin-bottom: 12px;
+    letter-spacing: -0.5px;
+    line-height: 1.2;
+  }
+  .cover .subtitle {
+    font-size: 17px;
+    color: #cbd5e0;
+    margin-bottom: 36px;
+    max-width: 800px;
+  }
+  .cover-meta {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 24px;
+    background: rgba(255,255,255,0.06);
+    padding: 24px 28px;
+    border-radius: 10px;
+    backdrop-filter: blur(6px);
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .cover-meta div { }
+  .cover-meta .k { font-size: 10px; color: #a0aec0; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+  .cover-meta .v { font-size: 14px; font-weight: 600; color: #fff; }
+
+  section {
+    background: #fff;
+    border-radius: 12px;
+    margin-bottom: 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    overflow: hidden;
+  }
+  section > h2 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #4a5568;
+    padding: 18px 28px 14px;
+    border-bottom: 1px solid #e2e8f0;
+    background: #fafbfc;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  section > h2::before {
+    content: '';
+    width: 4px;
+    height: 18px;
+    background: linear-gradient(180deg, #4299e1, #2b6cb0);
+    border-radius: 2px;
+  }
+  .section-body { padding: 28px; }
+
+  /* Exec Summary */
+  .exec-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 32px;
+  }
+  .exec-points { display: flex; flex-direction: column; gap: 12px; }
+  .exec-point {
+    padding: 16px 20px;
+    background: #f7fafc;
+    border-left: 4px solid #4299e1;
+    border-radius: 6px;
+  }
+  .exec-point.warning { border-left-color: #ed8936; background: #fffaf0; }
+  .exec-point.success { border-left-color: #48bb78; background: #f0fff4; }
+  .exec-point .label { font-size: 11px; font-weight: 700; color: #718096; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+  .exec-point .text { font-size: 14px; color: #2d3748; }
+
+  .kpi-card {
+    background: linear-gradient(135deg, #f0f4ff 0%, #e6efff 100%);
+    border: 1px solid #cbd5ff;
+    padding: 18px 20px;
+    border-radius: 8px;
+    margin-bottom: 10px;
+  }
+  .kpi-card .k { font-size: 11px; color: #4c51bf; text-transform: uppercase; font-weight: 700; letter-spacing: 1px; }
+  .kpi-card .v { font-size: 28px; font-weight: 800; color: #1a202c; margin-top: 4px; }
+  .kpi-card .v small { font-size: 14px; color: #718096; font-weight: 500; margin-left: 4px; }
+
+  /* Architecture */
+  .arch-compare {
+    display: grid;
+    grid-template-columns: 1fr 80px 1fr;
+    gap: 0;
+    align-items: stretch;
+  }
+  .arch-side {
+    padding: 24px;
+    border-radius: 8px;
+  }
+  .arch-before {
+    background: #fff5f5;
+    border: 2px dashed #fc8181;
+  }
+  .arch-after {
+    background: #f0fff4;
+    border: 2px solid #48bb78;
+  }
+  .arch-side h3 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 14px;
+    color: #2d3748;
+    font-weight: 700;
+  }
+  .arch-before h3 { color: #c53030; }
+  .arch-after h3 { color: #276749; }
+  .arch-box {
+    background: #fff;
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    font-size: 13px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .arch-box.ng { background: #fed7d7; text-decoration: line-through; color: #822727; }
+  .arch-box.ok { background: #c6f6d5; color: #22543d; font-weight: 600; }
+  .arch-box.reuse { background: #fefcbf; color: #744210; }
+  .arch-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    color: #4299e1;
+  }
+  .arch-tag {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.5);
+    font-weight: 700;
+  }
+
+  /* Gantt */
+  .gantt-wrap { overflow-x: auto; padding: 8px 0 20px; }
+  .gantt-svg { display: block; min-width: 1500px; }
+  .gantt-legend {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    padding: 14px 0 0;
+    border-top: 1px solid #e2e8f0;
+    margin-top: 12px;
+    font-size: 12px;
+    color: #4a5568;
+  }
+  .gantt-legend-item { display: flex; align-items: center; gap: 6px; }
+  .gantt-legend-swatch {
+    width: 18px; height: 12px; border-radius: 2px;
+  }
+
+  /* Phase Details */
+  .phase {
+    margin-bottom: 18px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .phase-header {
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: linear-gradient(90deg, var(--phase-color, #4299e1) 0%, transparent 60%);
+    color: #fff;
+  }
+  .phase-header .left { display: flex; align-items: center; gap: 14px; }
+  .phase-header .code {
+    font-size: 12px;
+    font-weight: 800;
+    background: rgba(0,0,0,0.25);
+    padding: 4px 10px;
+    border-radius: 4px;
+    letter-spacing: 1px;
+  }
+  .phase-header h3 { font-size: 16px; font-weight: 700; }
+  .phase-header .right { font-size: 12px; opacity: 0.9; }
+
+  .phase-body {
+    padding: 0;
+    background: #fff;
+  }
+  table.tasks {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+  }
+  table.tasks th,
+  table.tasks td {
+    padding: 9px 12px;
+    text-align: left;
+    border-bottom: 1px solid #edf2f7;
+  }
+  table.tasks th {
+    background: #f7fafc;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #4a5568;
+    font-weight: 700;
+    border-bottom: 2px solid #e2e8f0;
+  }
+  table.tasks tr:last-child td { border-bottom: none; }
+  table.tasks .id { font-family: 'SF Mono', Menlo, monospace; font-size: 11px; color: #718096; font-weight: 600; white-space: nowrap; }
+  table.tasks .task { font-weight: 500; color: #1a202c; }
+  table.tasks .deps { font-family: 'SF Mono', Menlo, monospace; font-size: 10.5px; color: #4a5568; }
+  table.tasks .effort { white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
+  table.tasks .critical { background: #fffaf0; }
+  table.tasks .critical .task::after {
+    content: ' ⚡';
+    color: #dd6b20;
+    font-weight: 800;
+  }
+  .accept {
+    background: #ebf8ff;
+    padding: 10px 14px;
+    border-top: 1px dashed #bee3f8;
+    font-size: 12px;
+    color: #2c5282;
+  }
+  .accept strong { color: #1a365d; }
+
+  /* Phase colors */
+  .ph-A { --phase-color: #4c51bf; }
+  .ph-B { --phase-color: #5a67d8; }
+  .ph-C { --phase-color: #667eea; }
+  .ph-D { --phase-color: #38b2ac; }
+  .ph-E { --phase-color: #319795; }
+  .ph-F { --phase-color: #319795; }
+  .ph-G { --phase-color: #319795; }
+  .ph-H { --phase-color: #319795; }
+  .ph-I { --phase-color: #ed8936; }
+  .ph-J { --phase-color: #ed8936; }
+  .ph-K { --phase-color: #d69e2e; }
+  .ph-L { --phase-color: #e53e3e; }
+  .ph-M { --phase-color: #38a169; }
+
+  /* Risk */
+  .risk-table { width: 100%; border-collapse: collapse; }
+  .risk-table th, .risk-table td { padding: 12px 14px; border-bottom: 1px solid #e2e8f0; font-size: 13px; text-align: left; vertical-align: top; }
+  .risk-table th { background: #f7fafc; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #4a5568; }
+  .severity {
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .sev-H { background: #fed7d7; color: #742a2a; }
+  .sev-M { background: #feebc8; color: #7b341e; }
+  .sev-L { background: #c6f6d5; color: #22543d; }
+
+  /* Milestones */
+  .ms-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 16px;
+  }
+  .ms-card {
+    background: linear-gradient(180deg, #fff 0%, #fafbfc 100%);
+    border: 1px solid #e2e8f0;
+    border-top: 4px solid #4299e1;
+    border-radius: 8px;
+    padding: 18px;
+    position: relative;
+  }
+  .ms-card.critical { border-top-color: #e53e3e; }
+  .ms-card.gold { border-top-color: #d69e2e; }
+  .ms-card .ms-id { font-size: 10px; font-weight: 800; color: #718096; letter-spacing: 1.5px; margin-bottom: 6px; }
+  .ms-card .ms-date { font-size: 13px; font-weight: 700; color: #1a202c; margin-bottom: 8px; }
+  .ms-card .ms-title { font-size: 13px; font-weight: 600; color: #2d3748; margin-bottom: 10px; }
+  .ms-card .ms-criteria { font-size: 11.5px; color: #4a5568; line-height: 1.55; }
+
+  /* Footer */
+  footer {
+    text-align: center;
+    font-size: 11px;
+    color: #a0aec0;
+    padding-top: 32px;
+    border-top: 1px solid #e2e8f0;
+    margin-top: 16px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- ===== Cover ===== -->
+  <div class="cover">
+    <div class="cover-label">プロジェクト計画書 / Confidential</div>
+    <h1>口コミ機能 Embedded App 移行プロジェクト</h1>
+    <div class="subtitle">
+      Hydrogen配置されている既存実装を全廃し、Shopify Admin Embedded App として完全移行する。
+      Shopify管理画面サイドバーからの1クリックアクセス・Polaris UI 統一・公式運用基準への準拠を達成する。
+      <br><br>
+      <strong style="color:#aee9d1;">v1.1 更新内容:</strong> ① Phase M-Audit 新設 (4視点 CDO/CTO/CMO/CEO 独立 Chrome MCP 監査) ② Design Spec との Traceability 列追加 ③ 独立 Traceability Matrix 別添。
+      <br>
+      <strong style="color:#fbbf24;">v1.2 更新内容 (CXO 4視点審査反映):</strong>
+      ① <strong>CDO:</strong> A-10 Brand Token / D-10 Foundation Design Review / E-13・F-12・G-08・H-08 各タブ Design Review。
+      ② <strong>CTO:</strong> A-11 Threat Model (STRIDE) + Privacy Impact / A-12 Staging 環境 / M-07 k6 ロードテスト強化 / M-08 Rollback Drill。
+      ③ <strong>CMO:</strong> J-10 Email Visual Design / J-11 A/B variant / M-11 リリースノート。
+      ④ <strong>CEO:</strong> Phase L 日数算術修正 (2→3日) / M-09/10/11 段階リリース 10%→50%→100%。
+      総タスク数 91 → 102。期間 16-17日 → 17日 (6/8月曜まで)。
+    </div>
+    <div class="cover-meta">
+      <div><div class="k">Project Code</div><div class="v">REV-EMB-2026-Q2</div></div>
+      <div><div class="k">承認者</div><div class="v">CEO 武正貴昭</div></div>
+      <div><div class="k">策定日</div><div class="v">2026-05-14</div></div>
+      <div><div class="k">期間</div><div class="v">2026/05/15 → 06/08 (17営業日)</div></div>
+      <div><div class="k">Version</div><div class="v">v1.2 (CXO 4視点審査反映)</div></div>
+    </div>
+  </div>
+
+  <!-- ===== Executive Summary ===== -->
+  <section>
+    <h2>1. Executive Summary</h2>
+    <div class="section-body">
+      <div class="exec-grid">
+        <div class="exec-points">
+          <div class="exec-point warning">
+            <div class="label">背景・問題</div>
+            <div class="text">仕様書v3で「Shopify Admin Embedded App方式」を明確に指定していたにも関わらず、前回実装でHydrogenルート（admin.reviews.tsx等7ファイル）として誤って構築。CEOから「Hydrogenは使わない」明示指示があり、全面的な再構築が必要。</div>
+          </div>
+          <div class="exec-point">
+            <div class="label">本プロジェクトの目的</div>
+            <div class="text">口コミ機能を Shopify Admin Embedded App として完全に再構築し、Shopify管理画面サイドバーから「口コミ管理」項目で直接アクセス可能にする。お客様向け投稿フォームも Hydrogen から剥離し、Embedded App 配下の公開ルートで提供。</div>
+          </div>
+          <div class="exec-point success">
+            <div class="label">再利用可能な既存資産（廃棄しない）</div>
+            <div class="text">
+              ① Shopify Metaobject 6 定義（DB スキーマ相当）<br>
+              ② Shopify Flow ワークフロー（注文発送→14日後トリガー、id <code>01KRJ1JF33PNW1ENMTQZ584SN5</code>）<br>
+              ③ Astromeda Product Manager アプリ（client_id <code>0410f99d…</code>）<br>
+              ④ SHOPIFY_APP_AUTOMATION_TOKEN / GitHub Actions CI/CD 配管<br>
+              ⑤ ドメイン知識（既往のロジック設計）
+            </div>
+          </div>
+          <div class="exec-point">
+            <div class="label">技術スタック（Shopify公式推奨）</div>
+            <div class="text">
+              Framework: <strong>Shopify Remix App Template</strong>（@shopify/shopify-app-remix）<br>
+              UI: <strong>Shopify Polaris</strong> + App Bridge v4<br>
+              Hosting: <strong>Fly.io</strong>（Shopify公式ドキュメント推奨）<br>
+              Auth: Session Token (App Bridge) / OAuth2<br>
+              Email: <strong>Shopify Flow + Shopify Email</strong>（10,000 通/月 まで無料・既存 Flow id <code>01KRJ1JF33PNW1ENMTQZ584SN5</code> を流用）<br>
+              CI/CD: GitHub Actions（既存配管を流用）
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="kpi-card">
+            <div class="k">総工数</div>
+            <div class="v">16<small>営業日</small></div>
+          </div>
+          <div class="kpi-card">
+            <div class="k">原子タスク数</div>
+            <div class="v">86<small>件</small></div>
+          </div>
+          <div class="kpi-card">
+            <div class="k">マイルストーン</div>
+            <div class="v">5<small>件</small></div>
+          </div>
+          <div class="kpi-card">
+            <div class="k">追加コスト</div>
+            <div class="v">¥0<small>/月（無料枠内）</small></div>
+          </div>
+          <div class="kpi-card">
+            <div class="k">削除対象 Hydrogen ファイル</div>
+            <div class="v">7<small>本</small></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Architecture Before / After ===== -->
+  <section>
+    <h2>2. アーキテクチャ Before / After</h2>
+    <div class="section-body">
+      <div class="arch-compare">
+        <div class="arch-side arch-before">
+          <h3>❌ Before（誤実装）</h3>
+          <div class="arch-box ng">app/routes/admin.reviews.tsx (Hydrogen) <span class="arch-tag">574行</span></div>
+          <div class="arch-box ng">app/routes/api.admin.review-tokens.ts <span class="arch-tag">163行</span></div>
+          <div class="arch-box ng">app/routes/api.admin.review-email-config.ts <span class="arch-tag">178行</span></div>
+          <div class="arch-box ng">app/routes/api.admin.review-email-process.ts <span class="arch-tag">195行</span></div>
+          <div class="arch-box ng">app/routes/webhooks.orders.fulfilled.ts <span class="arch-tag">157行</span></div>
+          <div class="arch-box ng">app/routes/apps.reviews.submit.tsx <span class="arch-tag">448行</span></div>
+          <div class="arch-box ng">app/routes/apps.reviews.complete.tsx <span class="arch-tag">60行</span></div>
+          <div class="arch-box ng">shopify.app.toml の [app_proxy] 設定</div>
+          <div style="font-size:11.5px;color:#742a2a;margin-top:14px;line-height:1.6;">
+            ❌ Shopify管理画面サイドバーに現れない<br>
+            ❌ Hydrogen 認証 (AppSession Cookie) で独自運用<br>
+            ❌ Polaris ではなく独自スタイル<br>
+            ❌ CEO 体験: URL を直打ちする必要
+          </div>
+        </div>
+
+        <div class="arch-arrow">→</div>
+
+        <div class="arch-side arch-after">
+          <h3>✅ After（目標形）</h3>
+          <div class="arch-box ok">🆕 astromeda-reviews-app (Shopify Remix) <span class="arch-tag">新規</span></div>
+          <div class="arch-box ok">　└ Polaris Admin UI (Embedded)</div>
+          <div class="arch-box ok">　└ Session Token Auth (App Bridge)</div>
+          <div class="arch-box ok">　└ /apps/reviews/* 公開ルート (App Proxy)</div>
+          <div class="arch-box ok">　└ /webhooks/* Shopify managed webhooks</div>
+          <div class="arch-box reuse">♻️ Metaobject 6 定義（既存 Shopify 上資産）</div>
+          <div class="arch-box reuse">♻️ Shopify Flow（既存ワークフロー、URL のみ差替）</div>
+          <div class="arch-box reuse">♻️ Shopify Email（Shopify SaaS 内で完結・DKIM/SPF 自動・10,000 通/月 無料）</div>
+          <div class="arch-box ok">🆕 Fly.io デプロイ（Cron は不要）</div>
+          <div style="font-size:11.5px;color:#22543d;margin-top:14px;line-height:1.6;">
+            ✅ Shopifyサイドバーに「口コミ管理」項目<br>
+            ✅ Session Token によるネイティブ統合<br>
+            ✅ Polaris UI で Shopify 体験統一<br>
+            ✅ CEO 体験: サイドバー1クリック
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Gantt Visualization ===== -->
+  <section>
+    <h2>3. プロジェクト全体スケジュール (Gantt)</h2>
+    <div class="section-body">
+      <div class="gantt-wrap">
+        <svg class="gantt-svg" viewBox="0 0 1600 720" xmlns="http://www.w3.org/2000/svg">
+          <!-- Date Axis -->
+          <g font-size="11" fill="#4a5568" font-family="-apple-system,sans-serif">
+            <!-- Week labels -->
+            <text x="240" y="22" font-weight="700" fill="#2d3748">Week 1 (5/15-5/22)</text>
+            <text x="640" y="22" font-weight="700" fill="#2d3748">Week 2 (5/25-5/29)</text>
+            <text x="1040" y="22" font-weight="700" fill="#2d3748">Week 3 (6/1-6/5)</text>
+            <!-- Day grid lines -->
+            <g stroke="#e2e8f0" stroke-width="1">
+              <!-- 16 days × 75px each, starting x=240 -->
+              <line x1="240" y1="32" x2="240" y2="700"/>
+              <line x1="315" y1="32" x2="315" y2="700"/>
+              <line x1="390" y1="32" x2="390" y2="700"/>
+              <line x1="465" y1="32" x2="465" y2="700"/>
+              <line x1="540" y1="32" x2="540" y2="700"/>
+              <line x1="615" y1="32" x2="615" y2="700"/>
+              <line x1="690" y1="32" x2="690" y2="700" stroke="#cbd5e0"/>
+              <line x1="765" y1="32" x2="765" y2="700"/>
+              <line x1="840" y1="32" x2="840" y2="700"/>
+              <line x1="915" y1="32" x2="915" y2="700"/>
+              <line x1="990" y1="32" x2="990" y2="700"/>
+              <line x1="1065" y1="32" x2="1065" y2="700" stroke="#cbd5e0"/>
+              <line x1="1140" y1="32" x2="1140" y2="700"/>
+              <line x1="1215" y1="32" x2="1215" y2="700"/>
+              <line x1="1290" y1="32" x2="1290" y2="700"/>
+              <line x1="1365" y1="32" x2="1365" y2="700"/>
+              <line x1="1440" y1="32" x2="1440" y2="700"/>
+            </g>
+            <!-- Day numbers -->
+            <g font-size="10" fill="#718096">
+              <text x="277" y="46" text-anchor="middle">5/15 金</text>
+              <text x="352" y="46" text-anchor="middle">5/18 月</text>
+              <text x="427" y="46" text-anchor="middle">5/19 火</text>
+              <text x="502" y="46" text-anchor="middle">5/20 水</text>
+              <text x="577" y="46" text-anchor="middle">5/21 木</text>
+              <text x="652" y="46" text-anchor="middle">5/22 金</text>
+              <text x="727" y="46" text-anchor="middle">5/25 月</text>
+              <text x="802" y="46" text-anchor="middle">5/26 火</text>
+              <text x="877" y="46" text-anchor="middle">5/27 水</text>
+              <text x="952" y="46" text-anchor="middle">5/28 木</text>
+              <text x="1027" y="46" text-anchor="middle">5/29 金</text>
+              <text x="1102" y="46" text-anchor="middle">6/1 月</text>
+              <text x="1177" y="46" text-anchor="middle">6/2 火</text>
+              <text x="1252" y="46" text-anchor="middle">6/3 水</text>
+              <text x="1327" y="46" text-anchor="middle">6/4 木</text>
+              <text x="1402" y="46" text-anchor="middle">6/5 金</text>
+            </g>
+          </g>
+
+          <!-- Phase Rows -->
+          <g font-family="-apple-system,sans-serif" font-size="11">
+
+            <!-- Phase A: Day 1 (5/15) -->
+            <rect x="20" y="60" width="210" height="28" fill="#fafbfc"/>
+            <text x="32" y="78" font-weight="700" fill="#2d3748">A: 基盤・設計</text>
+            <rect x="240" y="64" width="75" height="20" rx="3" fill="#4c51bf"/>
+            <text x="278" y="78" fill="#fff" text-anchor="middle" font-weight="700">A 0.5d</text>
+
+            <!-- Phase B: Day 2 -->
+            <rect x="20" y="92" width="210" height="28" fill="#fafbfc"/>
+            <text x="32" y="110" font-weight="700" fill="#2d3748">B: DB/Models</text>
+            <rect x="315" y="96" width="75" height="20" rx="3" fill="#5a67d8"/>
+            <text x="353" y="110" fill="#fff" text-anchor="middle" font-weight="700">B 1d</text>
+
+            <!-- Phase C: Day 3 -->
+            <rect x="20" y="124" width="210" height="28" fill="#fafbfc"/>
+            <text x="32" y="142" font-weight="700" fill="#2d3748">C: Auth & RBAC ⚡</text>
+            <rect x="390" y="128" width="75" height="20" rx="3" fill="#667eea" stroke="#dd6b20" stroke-width="2"/>
+            <text x="428" y="142" fill="#fff" text-anchor="middle" font-weight="700">C 1d</text>
+
+            <!-- Phase D: Day 4 -->
+            <rect x="20" y="156" width="210" height="28" fill="#fafbfc"/>
+            <text x="32" y="174" font-weight="700" fill="#2d3748">D: UI Foundation ⚡</text>
+            <rect x="465" y="160" width="75" height="20" rx="3" fill="#38b2ac" stroke="#dd6b20" stroke-width="2"/>
+            <text x="503" y="174" fill="#fff" text-anchor="middle" font-weight="700">D 1d</text>
+
+            <!-- Phase E: Day 5-6 -->
+            <rect x="20" y="188" width="210" height="28" fill="#fafbfc"/>
+            <text x="32" y="206" font-weight="700" fill="#2d3748">E: Reviews UI ⚡</text>
+            <rect x="540" y="192" width="150" height="20" rx="3" fill="#319795" stroke="#dd6b20" stroke-width="2"/>
+            <text x="615" y="206" fill="#fff" text-anchor="middle" font-weight="700">E 2d</text>
+
+            <!-- Phase F: Day 5-6 parallel -->
+            <rect x="20" y="220" width="210" height="28" fill="#fafbfc"/>
+            <text x="32" y="238" font-weight="700" fill="#2d3748">F: Email Config UI</text>
+            <rect x="540" y="224" width="150" height="20" rx="3" fill="#319795" opacity="0.85"/>
+            <text x="615" y="238" fill="#fff" text-anchor="middle" font-weight="700">F 2d (parallel)</text>
+
+            <!-- Phase G: Day 7 -->
+            <rect x="20" y="252" width="210" height="28" fill="#fafbfc"/>
+            <text x="32" y="270" font-weight="700" fill="#2d3748">G: Gift Tokens UI</text>
+            <rect x="690" y="256" width="75" height="20" rx="3" fill="#319795" opacity="0.85"/>
+            <text x="728" y="270" fill="#fff" text-anchor="middle" font-weight="700">G 1d</text>
+
+            <!-- Phase H: Day 8 -->
+            <rect x="20" y="284" width="210" height="28" fill="#fafbfc"/>
+            <text x="32" y="302" font-weight="700" fill="#2d3748">H: Queue UI</text>
+            <rect x="765" y="288" width="75" height="20" rx="3" fill="#319795" opacity="0.85"/>
+            <text x="803" y="302" fill="#fff" text-anchor="middle" font-weight="700">H 1d</text>
+
+            <!-- Phase I: Day 9 -->
+            <rect x="20" y="316" width="210" height="28" fill="#fafbfc"/>
+            <text x="32" y="334" font-weight="700" fill="#2d3748">I: Webhook 受信 ⚡</text>
+            <rect x="840" y="320" width="75" height="20" rx="3" fill="#ed8936" stroke="#dd6b20" stroke-width="2"/>
+            <text x="878" y="334" fill="#fff" text-anchor="middle" font-weight="700">I 1d</text>
+
+            <!-- Phase J: Day 10 -->
+            <rect x="20" y="348" width="210" height="28" fill="#fafbfc"/>
+            <text x="32" y="366" font-weight="700" fill="#2d3748">J: Email Cron ⚡</text>
+            <rect x="915" y="352" width="75" height="20" rx="3" fill="#ed8936" stroke="#dd6b20" stroke-width="2"/>
+            <text x="953" y="366" fill="#fff" text-anchor="middle" font-weight="700">J 1d</text>
+
+            <!-- Phase K: Day 11-12 -->
+            <rect x="20" y="380" width="210" height="28" fill="#fafbfc"/>
+            <text x="32" y="398" font-weight="700" fill="#2d3748">K: 公開ルート（お客様用）</text>
+            <rect x="990" y="384" width="150" height="20" rx="3" fill="#d69e2e"/>
+            <text x="1065" y="398" fill="#fff" text-anchor="middle" font-weight="700">K 2d</text>
+
+            <!-- Phase L: Day 13-14 -->
+            <rect x="20" y="412" width="210" height="28" fill="#fafbfc"/>
+            <text x="32" y="430" font-weight="700" fill="#2d3748">L: Migration & Cutover ⚡</text>
+            <rect x="1140" y="416" width="150" height="20" rx="3" fill="#e53e3e" stroke="#dd6b20" stroke-width="2"/>
+            <text x="1215" y="430" fill="#fff" text-anchor="middle" font-weight="700">L 2d</text>
+
+            <!-- Phase M: Day 15-16 -->
+            <rect x="20" y="444" width="210" height="28" fill="#fafbfc"/>
+            <text x="32" y="462" font-weight="700" fill="#2d3748">M: Go-Live & 監査 ⚡</text>
+            <rect x="1290" y="448" width="150" height="20" rx="3" fill="#38a169" stroke="#dd6b20" stroke-width="2"/>
+            <text x="1365" y="462" fill="#fff" text-anchor="middle" font-weight="700">M 2d</text>
+
+            <!-- Dependencies (arrows) -->
+            <g stroke="#a0aec0" stroke-width="1.5" fill="none" stroke-dasharray="4,3">
+              <path d="M 315 84 L 315 96" marker-end="url(#arr)"/>
+              <path d="M 390 116 L 390 128" marker-end="url(#arr)"/>
+              <path d="M 465 148 L 465 160" marker-end="url(#arr)"/>
+              <path d="M 540 180 L 540 192" marker-end="url(#arr)"/>
+              <path d="M 540 180 L 540 224" marker-end="url(#arr)"/>
+              <path d="M 690 244 L 690 256" marker-end="url(#arr)"/>
+              <path d="M 765 276 L 765 288" marker-end="url(#arr)"/>
+              <path d="M 540 180 L 840 320" marker-end="url(#arr)"/>
+              <path d="M 915 340 L 915 352" marker-end="url(#arr)"/>
+              <path d="M 990 372 L 990 384" marker-end="url(#arr)"/>
+              <path d="M 1140 404 L 1140 416" marker-end="url(#arr)"/>
+              <path d="M 1290 436 L 1290 448" marker-end="url(#arr)"/>
+            </g>
+            <defs>
+              <marker id="arr" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+                <path d="M 0 0 L 8 4 L 0 8 z" fill="#a0aec0"/>
+              </marker>
+            </defs>
+
+            <!-- Milestones -->
+            <g font-size="10" font-weight="700">
+              <!-- M1: Foundation Complete (end of D, day 4) -->
+              <polygon points="540,500 552,512 540,524 528,512" fill="#d69e2e" stroke="#744210" stroke-width="1.5"/>
+              <text x="540" y="546" text-anchor="middle" fill="#744210">M1</text>
+              <text x="540" y="558" text-anchor="middle" fill="#4a5568" font-weight="500">基盤完成</text>
+              <text x="540" y="570" text-anchor="middle" fill="#a0aec0" font-size="9">5/20</text>
+
+              <!-- M2: Admin UI Complete (end of H, day 8) -->
+              <polygon points="840,500 852,512 840,524 828,512" fill="#d69e2e" stroke="#744210" stroke-width="1.5"/>
+              <text x="840" y="546" text-anchor="middle" fill="#744210">M2</text>
+              <text x="840" y="558" text-anchor="middle" fill="#4a5568" font-weight="500">管理画面完成</text>
+              <text x="840" y="570" text-anchor="middle" fill="#a0aec0" font-size="9">5/26</text>
+
+              <!-- M3: Backend Complete (end of J, day 10) -->
+              <polygon points="990,500 1002,512 990,524 978,512" fill="#d69e2e" stroke="#744210" stroke-width="1.5"/>
+              <text x="990" y="546" text-anchor="middle" fill="#744210">M3</text>
+              <text x="990" y="558" text-anchor="middle" fill="#4a5568" font-weight="500">バックエンド完成</text>
+              <text x="990" y="570" text-anchor="middle" fill="#a0aec0" font-size="9">5/28</text>
+
+              <!-- M4: Migration Complete (end of L, day 14) -->
+              <polygon points="1290,500 1302,512 1290,524 1278,512" fill="#e53e3e" stroke="#742a2a" stroke-width="1.5"/>
+              <text x="1290" y="546" text-anchor="middle" fill="#742a2a">M4</text>
+              <text x="1290" y="558" text-anchor="middle" fill="#4a5568" font-weight="500">Hydrogen剥離完了</text>
+              <text x="1290" y="570" text-anchor="middle" fill="#a0aec0" font-size="9">6/3</text>
+
+              <!-- M5: Go-Live (end of M, day 16) -->
+              <polygon points="1440,500 1452,512 1440,524 1428,512" fill="#38a169" stroke="#22543d" stroke-width="1.5"/>
+              <text x="1440" y="546" text-anchor="middle" fill="#22543d">M5</text>
+              <text x="1440" y="558" text-anchor="middle" fill="#4a5568" font-weight="500">本番稼働開始</text>
+              <text x="1440" y="570" text-anchor="middle" fill="#a0aec0" font-size="9">6/5</text>
+            </g>
+
+            <!-- Critical Path Indicator -->
+            <g>
+              <text x="20" y="610" font-size="11" font-weight="700" fill="#dd6b20">⚡ クリティカルパス:</text>
+              <text x="155" y="610" font-size="11" fill="#4a5568">A → B → C → D → E → I → J → L → M</text>
+              <text x="20" y="628" font-size="11" font-weight="700" fill="#4a5568">並列実行:</text>
+              <text x="105" y="628" font-size="11" fill="#4a5568">F・G・H は E と並走可（Day 5以降）／ K は I・J と並走可</text>
+              <text x="20" y="646" font-size="11" font-weight="700" fill="#4a5568">CEO 関与:</text>
+              <text x="100" y="646" font-size="11" fill="#4a5568">A1 kickoff (15分), M1/M2/M4/M5 確認 (各15-30分), M3 任意</text>
+            </g>
+
+          </g>
+        </svg>
+      </div>
+
+      <div class="gantt-legend">
+        <div class="gantt-legend-item"><div class="gantt-legend-swatch" style="background:#4c51bf;"></div>基盤・設計</div>
+        <div class="gantt-legend-item"><div class="gantt-legend-swatch" style="background:#38b2ac;"></div>UI</div>
+        <div class="gantt-legend-item"><div class="gantt-legend-swatch" style="background:#ed8936;"></div>Backend</div>
+        <div class="gantt-legend-item"><div class="gantt-legend-swatch" style="background:#d69e2e;"></div>公開ルート</div>
+        <div class="gantt-legend-item"><div class="gantt-legend-swatch" style="background:#e53e3e;"></div>Migration</div>
+        <div class="gantt-legend-item"><div class="gantt-legend-swatch" style="background:#38a169;"></div>Go-Live</div>
+        <div class="gantt-legend-item"><div class="gantt-legend-swatch" style="background:#fff;border:2px solid #dd6b20;"></div>クリティカルパス</div>
+        <div class="gantt-legend-item">◆ マイルストーン</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Phase Details ===== -->
+  <section>
+    <h2>4. フェーズ別 原子タスク詳細</h2>
+    <div class="section-body">
+
+      <!-- Phase A -->
+      <div class="phase ph-A">
+        <div class="phase-header">
+          <div class="left">
+            <span class="code">PHASE A</span>
+            <h3>基盤・設計 (Architecture & Foundation)</h3>
+          </div>
+          <div class="right">5/15(金) ・ 0.5日 ・ 4h</div>
+        </div>
+        <div class="phase-body">
+          <table class="tasks">
+            <thead><tr><th style="width:80px;">ID</th><th>タスク</th><th style="width:130px;">担当</th><th style="width:130px;">依存</th><th style="width:80px;">工数</th></tr></thead>
+            <tbody>
+              <tr><td class="id">A-01</td><td class="task">CEO/Claude キックオフ会議・要件最終確認</td><td>CEO + Claude</td><td class="deps">-</td><td class="effort">30 min</td></tr>
+              <tr><td class="id">A-02</td><td class="task">GitHubリポジトリ新規作成 <code>astromeda-reviews-app</code></td><td>Claude (PAT)</td><td class="deps">A-01</td><td class="effort">15 min</td></tr>
+              <tr><td class="id">A-03</td><td class="task">Shopify Remix App テンプレート初期化 <code>npm init @shopify/app@latest</code></td><td>Claude</td><td class="deps">A-02</td><td class="effort">30 min</td></tr>
+              <tr><td class="id">A-04</td><td class="task">Fly.io アカウント作成 + CLI install + 初回ログイン</td><td>CEO (3-5分) + Claude</td><td class="deps">A-01</td><td class="effort">30 min</td></tr>
+              <tr><td class="id">A-05</td><td class="task"><code>fly.toml</code> 構成 + 初回 Hello World デプロイ</td><td>Claude</td><td class="deps">A-03, A-04</td><td class="effort">45 min</td></tr>
+              <tr><td class="id">A-06</td><td class="task">Astromeda Product Manager app の URL を Fly.io URL に変更 (Dev Dashboard)</td><td>Claude (Chrome MCP)</td><td class="deps">A-05</td><td class="effort">15 min</td></tr>
+              <tr><td class="id">A-07</td><td class="task">OAuth インストールフロー検証 (production-mining-base ストア)</td><td>Claude</td><td class="deps">A-06</td><td class="effort">30 min</td></tr>
+              <tr><td class="id">A-08</td><td class="task">GitHub Actions secret + Fly.io API token 連携</td><td>CEO (1分) + Claude</td><td class="deps">A-02</td><td class="effort">15 min</td></tr>
+              <tr><td class="id">A-09</td><td class="task">プロジェクト README + ADR-001（技術選定記録）</td><td>Claude</td><td class="deps">A-01</td><td class="effort">30 min</td></tr>
+              <tr class="critical"><td class="id">A-10</td><td class="task">🎨 <strong>(v1.2 新設 / CDO)</strong> ASTROMEDA Brand Token 設計・Polaris extension 設定<br>foundation/tokens.ts でブランド色 (#14b8a6, #d69e2e 等) ・タイポ・余白を定義し、Polaris と共存可能にする</td><td>Claude (CDO人格)</td><td class="deps">A-03</td><td class="effort">45 min</td></tr>
+              <tr class="critical"><td class="id">A-11</td><td class="task">🛡️ <strong>(v1.2 新設 / CTO)</strong> Threat Model (STRIDE) + Privacy Impact Assessment<br>個人情報 (email/写真) と認証フローの脅威モデル文書化。PIA はステマ法・個人情報保護法対応点を含む</td><td>Claude (CTO人格)</td><td class="deps">A-01</td><td class="effort">60 min</td></tr>
+              <tr class="critical"><td class="id">A-12</td><td class="task">🧪 <strong>(v1.2 新設 / CTO)</strong> Staging Shopify dev store + Fly.io staging app 構築<br>staging-mining-base ストア + reviews-staging.fly.dev の 2 環境を分離。全Phase で staging 先行検証</td><td>Claude</td><td class="deps">A-05</td><td class="effort">45 min</td></tr>
+            </tbody>
+          </table>
+          <div class="accept"><strong>受け入れ基準:</strong> Fly.io 上 production / staging の 2 環境が稼働。staging ストアに OAuth インストール完了。Threat Model + PIA 文書 commit 済。Brand Token が Polaris と共存して TS から参照可能。</div>
+        </div>
+      </div>
+
+      <!-- Phase B -->
+      <div class="phase ph-B">
+        <div class="phase-header">
+          <div class="left">
+            <span class="code">PHASE B</span>
+            <h3>DB スキーマ・モデル層 (Domain Layer)</h3>
+          </div>
+          <div class="right">5/18(月) ・ 1日 ・ 6h</div>
+        </div>
+        <div class="phase-body">
+          <table class="tasks">
+            <thead><tr><th style="width:80px;">ID</th><th>タスク</th><th style="width:130px;">担当</th><th style="width:130px;">依存</th><th style="width:80px;">工数</th></tr></thead>
+            <tbody>
+              <tr><td class="id">B-01</td><td class="task">既存 Metaobject 6 定義の inventory 化 (TypeScript 型定義)</td><td>Claude</td><td class="deps">A-09</td><td class="effort">45 min</td></tr>
+              <tr><td class="id">B-02</td><td class="task">Shopify Admin GraphQL クライアントヘルパー実装 (session auth)</td><td>Claude</td><td class="deps">B-01</td><td class="effort">45 min</td></tr>
+              <tr><td class="id">B-03</td><td class="task">Prisma SQLite セッション保存 (Shopify Remix デフォルト)</td><td>Claude</td><td class="deps">A-05</td><td class="effort">30 min</td></tr>
+              <tr><td class="id">B-04</td><td class="task">domain/reviews.ts: CRUD ロジック実装 (Metaobject 経由)</td><td>Claude</td><td class="deps">B-02</td><td class="effort">1 h</td></tr>
+              <tr><td class="id">B-05</td><td class="task">domain/tokens.ts: トークン発行・検証ロジック</td><td>Claude</td><td class="deps">B-02</td><td class="effort">1 h</td></tr>
+              <tr><td class="id">B-06</td><td class="task">domain/email-config.ts: 設定 CRUD + 優先度解決ロジック</td><td>Claude</td><td class="deps">B-02</td><td class="effort">1 h</td></tr>
+              <tr><td class="id">B-07</td><td class="task">domain/queue.ts: キュー入出庫ロジック</td><td>Claude</td><td class="deps">B-02</td><td class="effort">45 min</td></tr>
+              <tr><td class="id">B-08</td><td class="task">domain/__tests__/ ユニットテスト (Vitest)</td><td>Claude</td><td class="deps">B-04, B-05, B-06, B-07</td><td class="effort">45 min</td></tr>
+            </tbody>
+          </table>
+          <div class="accept"><strong>受け入れ基準:</strong> 全 domain モジュールがユニットテスト緑判定。GraphQL クエリが実 Shopify ストアの Metaobject に対して動作確認済み。</div>
+        </div>
+      </div>
+
+      <!-- Phase C -->
+      <div class="phase ph-C">
+        <div class="phase-header">
+          <div class="left">
+            <span class="code">PHASE C</span>
+            <h3>認証 ・ RBAC ・ ミドルウェア （クリティカルパス ⚡）</h3>
+          </div>
+          <div class="right">5/19(火) ・ 1日 ・ 6h</div>
+        </div>
+        <div class="phase-body">
+          <table class="tasks">
+            <thead><tr><th style="width:80px;">ID</th><th>タスク</th><th style="width:130px;">担当</th><th style="width:130px;">依存</th><th style="width:80px;">工数</th></tr></thead>
+            <tbody>
+              <tr class="critical"><td class="id">C-01</td><td class="task">App Bridge v4 SDK 統合 (Polaris-AppBridge wrapper)</td><td>Claude</td><td class="deps">B-08</td><td class="effort">45 min</td></tr>
+              <tr class="critical"><td class="id">C-02</td><td class="task">Session Token 検証ミドルウェア (authenticate.admin)</td><td>Claude</td><td class="deps">C-01</td><td class="effort">45 min</td></tr>
+              <tr><td class="id">C-03</td><td class="task">RBAC: shop scope 検証ロジック (Astromeda 専用)</td><td>Claude</td><td class="deps">C-02</td><td class="effort">30 min</td></tr>
+              <tr><td class="id">C-04</td><td class="task">Rate Limit ミドルウェア (in-memory or Redis)</td><td>Claude</td><td class="deps">C-02</td><td class="effort">45 min</td></tr>
+              <tr><td class="id">C-05</td><td class="task">Audit Log ミドルウェア (Metaobject astromeda_audit_log)</td><td>Claude</td><td class="deps">C-02</td><td class="effort">45 min</td></tr>
+              <tr><td class="id">C-06</td><td class="task">エラーハンドラ + Sentry 連携準備</td><td>Claude</td><td class="deps">C-02</td><td class="effort">45 min</td></tr>
+              <tr><td class="id">C-07</td><td class="task">ヘルスチェック + readiness エンドポイント /healthz</td><td>Claude</td><td class="deps">C-02</td><td class="effort">30 min</td></tr>
+              <tr><td class="id">C-08</td><td class="task">セキュリティ E2E テスト (未認証 / 不正トークン / レート超過)</td><td>Claude</td><td class="deps">C-04, C-05</td><td class="effort">1 h</td></tr>
+            </tbody>
+          </table>
+          <div class="accept"><strong>受け入れ基準:</strong> 未認証リクエストは 401、不正トークンは 403、レート超過は 429 を返す。Audit Log が Metaobject に正しく保存される。</div>
+        </div>
+      </div>
+
+      <!-- Phase D -->
+      <div class="phase ph-D">
+        <div class="phase-header">
+          <div class="left">
+            <span class="code">PHASE D</span>
+            <h3>Polaris UI 基盤 + NavigationMenu （クリティカルパス ⚡）</h3>
+          </div>
+          <div class="right">5/20(水) ・ 1日 ・ 6h</div>
+        </div>
+        <div class="phase-body">
+          <table class="tasks">
+            <thead><tr><th style="width:80px;">ID</th><th>タスク</th><th style="width:130px;">担当</th><th style="width:130px;">依存</th><th style="width:80px;">工数</th></tr></thead>
+            <tbody>
+              <tr class="critical"><td class="id">D-01</td><td class="task"><code>@shopify/polaris</code> + <code>@shopify/app-bridge-react</code> install + AppProvider 設定</td><td>Claude</td><td class="deps">C-01</td><td class="effort">30 min</td></tr>
+              <tr class="critical"><td class="id">D-02</td><td class="task">App layout shell (Frame + Navigation)</td><td>Claude</td><td class="deps">D-01</td><td class="effort">45 min</td></tr>
+              <tr class="critical"><td class="id">D-03</td><td class="task">⭐ App Bridge NavigationMenu で「口コミ管理」を Shopify サイドバーに登録</td><td>Claude</td><td class="deps">D-02</td><td class="effort">45 min</td></tr>
+              <tr><td class="id">D-04</td><td class="task">Page Header 統一パターン (タイトル + KPIバッジ + アクション)</td><td>Claude</td><td class="deps">D-02</td><td class="effort">30 min</td></tr>
+              <tr><td class="id">D-05</td><td class="task">Tabs コンポーネント (4 タブ切替)</td><td>Claude</td><td class="deps">D-04</td><td class="effort">30 min</td></tr>
+              <tr><td class="id">D-06</td><td class="task">EmptyState コンポーネント + skeletons</td><td>Claude</td><td class="deps">D-01</td><td class="effort">30 min</td></tr>
+              <tr><td class="id">D-07</td><td class="task">Toast (成功 / 失敗) 共通フック</td><td>Claude</td><td class="deps">D-01</td><td class="effort">30 min</td></tr>
+              <tr><td class="id">D-08</td><td class="task">ConfirmDialog (削除 / 非公開化 確認モーダル)</td><td>Claude</td><td class="deps">D-01</td><td class="effort">30 min</td></tr>
+              <tr><td class="id">D-09</td><td class="task">レスポンシブ動作確認 (Shopify mobile admin)</td><td>Claude</td><td class="deps">D-05</td><td class="effort">45 min</td></tr>
+              <tr class="critical"><td class="id">D-10</td><td class="task">🚦 <strong>(v1.2 新設 / CDO Checkpoint)</strong> Foundation Design Review — Chrome MCP で空 4 タブを CDO 視点監査<br>本 checkpoint 通過後に E-H 機能実装へ。Polaris token 一致・Brand token 共存・NavigationMenu 正常を CDO 人格で確認</td><td>Claude (CDO人格)</td><td class="deps">D-09</td><td class="effort">30 min</td></tr>
+            </tbody>
+          </table>
+          <div class="accept"><strong>🎯 M1 達成基準:</strong> Shopify Admin で本アプリを開くと、サイドバーに「口コミ管理」項目が表示され、空の4タブ画面が Polaris で正しくレンダリングされる。D-10 Foundation Design Review 通過。</div>
+        </div>
+      </div>
+
+      <!-- Phase E -->
+      <div class="phase ph-E">
+        <div class="phase-header">
+          <div class="left">
+            <span class="code">PHASE E</span>
+            <h3>Tab 1: レビュー一覧 ・ 承認管理 （クリティカルパス ⚡）</h3>
+          </div>
+          <div class="right">5/21-22 ・ 2日 ・ 12h</div>
+        </div>
+        <div class="phase-body">
+          <table class="tasks">
+            <thead><tr><th style="width:80px;">ID</th><th>タスク</th><th style="width:130px;">担当</th><th style="width:130px;">依存</th><th style="width:80px;">工数</th></tr></thead>
+            <tbody>
+              <tr class="critical"><td class="id">E-01</td><td class="task">Loader: reviews 取得 (filter / cursor pagination)</td><td>Claude</td><td class="deps">D-09</td><td class="effort">1 h</td></tr>
+              <tr class="critical"><td class="id">E-02</td><td class="task">IndexTable + 列定義 (rating / 商品 / 投稿者 / 日付 / status)</td><td>Claude</td><td class="deps">E-01</td><td class="effort">1.5 h</td></tr>
+              <tr><td class="id">E-03</td><td class="task">フィルタチップ (Pending / Approved / Rejected / All) + URL persist</td><td>Claude</td><td class="deps">E-02</td><td class="effort">45 min</td></tr>
+              <tr><td class="id">E-04</td><td class="task">Status Badge (pending=warn, approved=success, rejected=critical)</td><td>Claude</td><td class="deps">E-02</td><td class="effort">30 min</td></tr>
+              <tr><td class="id">E-05</td><td class="task">行クリック → Detail Modal (full content + photos)</td><td>Claude</td><td class="deps">E-02</td><td class="effort">1 h</td></tr>
+              <tr><td class="id">E-06</td><td class="task">Photo Gallery viewer (Polaris Thumbnail + Modal)</td><td>Claude</td><td class="deps">E-05</td><td class="effort">45 min</td></tr>
+              <tr><td class="id">E-07</td><td class="task">承認 / 拒否 Action (Optimistic UI + Toast)</td><td>Claude</td><td class="deps">E-05</td><td class="effort">1 h</td></tr>
+              <tr><td class="id">E-08</td><td class="task">Bulk action toolbar (一括承認 / 拒否)</td><td>Claude</td><td class="deps">E-07</td><td class="effort">45 min</td></tr>
+              <tr><td class="id">E-09</td><td class="task">Source Badge (verified_purchase / gift_recipient)</td><td>Claude</td><td class="deps">E-04</td><td class="effort">15 min</td></tr>
+              <tr><td class="id">E-10</td><td class="task">商品ページの custom.reviews metafield 自動更新 (承認時)</td><td>Claude</td><td class="deps">E-07</td><td class="effort">45 min</td></tr>
+              <tr><td class="id">E-11</td><td class="task">E2E テスト (Playwright): pending → approve → 商品ページに反映</td><td>Claude</td><td class="deps">E-10</td><td class="effort">1.5 h</td></tr>
+              <tr><td class="id">E-12</td><td class="task">UX レビュー (CEO 30 分 walkthrough)</td><td>CEO + Claude</td><td class="deps">E-11</td><td class="effort">30 min</td></tr>
+              <tr><td class="id">E-13</td><td class="task">🚦 <strong>(v1.2 新設 / CDO Checkpoint)</strong> Tab 1 Design Review Chrome MCP 監査<br>承認 / 拒否 Action / Modal / 状態網羅 W1+W2+W3 を CDO 視点で確認</td><td>Claude (CDO人格)</td><td class="deps">E-12</td><td class="effort">20 min</td></tr>
+            </tbody>
+          </table>
+          <div class="accept"><strong>受け入れ基準:</strong> 既存 Hydrogen 側のレビューデータ（pending）を Embedded App から表示・承認可能。承認後、商品ページに反映される。CEO の操作テストで合格。E-13 Tab1 Design Review 通過。</div>
+        </div>
+      </div>
+
+      <!-- Phase F -->
+      <div class="phase ph-F">
+        <div class="phase-header">
+          <div class="left">
+            <span class="code">PHASE F</span>
+            <h3>Tab 2: メール設定 (IP / カテゴリ別)</h3>
+          </div>
+          <div class="right">5/21-22（E と並走） ・ 2日 ・ 11h</div>
+        </div>
+        <div class="phase-body">
+          <table class="tasks">
+            <thead><tr><th style="width:80px;">ID</th><th>タスク</th><th style="width:130px;">担当</th><th style="width:130px;">依存</th><th style="width:80px;">工数</th></tr></thead>
+            <tbody>
+              <tr><td class="id">F-01</td><td class="task">EmptyState: 「最初の設定を作成」誘導</td><td>Claude</td><td class="deps">D-06</td><td class="effort">30 min</td></tr>
+              <tr><td class="id">F-02</td><td class="task">設定一覧 (Card pattern + Toggle 有効化スイッチ)</td><td>Claude</td><td class="deps">F-01</td><td class="effort">1 h</td></tr>
+              <tr><td class="id">F-03</td><td class="task">新規作成フォーム (target_type / handle / label / delay_days)</td><td>Claude</td><td class="deps">F-02</td><td class="effort">1.5 h</td></tr>
+              <tr><td class="id">F-04</td><td class="task">編集フォーム (同 form を reuse)</td><td>Claude</td><td class="deps">F-03</td><td class="effort">30 min</td></tr>
+              <tr><td class="id">F-05</td><td class="task">テンプレート編集 (件名 / 本文) + 変数ピッカー</td><td>Claude</td><td class="deps">F-04</td><td class="effort">1 h</td></tr>
+              <tr><td class="id">F-06</td><td class="task">プレビュー rendering (実変数代入)</td><td>Claude</td><td class="deps">F-05</td><td class="effort">45 min</td></tr>
+              <tr><td class="id">F-07</td><td class="task">有効化トグル (ConfirmDialog 表示 + 楽観 UI)</td><td>Claude</td><td class="deps">F-04</td><td class="effort">45 min</td></tr>
+              <tr><td class="id">F-08</td><td class="task">削除 (ConfirmDialog + queue 影響確認 + 削除実行)</td><td>Claude</td><td class="deps">F-07</td><td class="effort">45 min</td></tr>
+              <tr><td class="id">F-09</td><td class="task">IP コレクション handle 自動補完 (Shopify Collection API)</td><td>Claude</td><td class="deps">F-03</td><td class="effort">1 h</td></tr>
+              <tr><td class="id">F-10</td><td class="task">E2E テスト (Playwright): 作成→有効化→キュー登録</td><td>Claude</td><td class="deps">F-07</td><td class="effort">1 h</td></tr>
+              <tr><td class="id">F-11</td><td class="task">UX レビュー (CEO 確認)</td><td>CEO + Claude</td><td class="deps">F-10</td><td class="effort">30 min</td></tr>
+              <tr><td class="id">F-12</td><td class="task">🚦 <strong>(v1.2 新設 / CDO Checkpoint)</strong> Tab 2 Design Review (W4 + プレビュー)</td><td>Claude (CDO人格)</td><td class="deps">F-11</td><td class="effort">20 min</td></tr>
+            </tbody>
+          </table>
+          <div class="accept"><strong>受け入れ基準:</strong> ヒロアカコラボ用設定を「作成→有効化」して、有効化済みリストに表示される。テンプレートプレビューが実データで表示される。F-12 Tab2 Design Review 通過。</div>
+        </div>
+      </div>
+
+      <!-- Phase G -->
+      <div class="phase ph-G">
+        <div class="phase-header">
+          <div class="left">
+            <span class="code">PHASE G</span>
+            <h3>Tab 3: ギフトトークン発行</h3>
+          </div>
+          <div class="right">5/25(月) ・ 1日 ・ 5.5h</div>
+        </div>
+        <div class="phase-body">
+          <table class="tasks">
+            <thead><tr><th style="width:80px;">ID</th><th>タスク</th><th style="width:130px;">担当</th><th style="width:130px;">依存</th><th style="width:80px;">工数</th></tr></thead>
+            <tbody>
+              <tr><td class="id">G-01</td><td class="task">単一発行フォーム (受領者名 / メール / 商品 handle)</td><td>Claude</td><td class="deps">F-11</td><td class="effort">1 h</td></tr>
+              <tr><td class="id">G-02</td><td class="task">CSV 一括発行 (DropZone + パース + バリデーション)</td><td>Claude</td><td class="deps">G-01</td><td class="effort">1.5 h</td></tr>
+              <tr><td class="id">G-03</td><td class="task">発行履歴一覧 (status badge: 未使用 / 使用済 / 期限切れ)</td><td>Claude</td><td class="deps">G-01</td><td class="effort">45 min</td></tr>
+              <tr><td class="id">G-04</td><td class="task">URL コピー (Polaris Button + Toast)</td><td>Claude</td><td class="deps">G-03</td><td class="effort">15 min</td></tr>
+              <tr><td class="id">G-05</td><td class="task">再送 / 取消 アクション</td><td>Claude</td><td class="deps">G-03</td><td class="effort">45 min</td></tr>
+              <tr><td class="id">G-06</td><td class="task">即時メール送信オプション (checkbox → queue 即時投入)</td><td>Claude</td><td class="deps">G-01</td><td class="effort">30 min</td></tr>
+              <tr><td class="id">G-07</td><td class="task">E2E テスト: CSV 5 件発行 → 全 URL 動作確認</td><td>Claude</td><td class="deps">G-06</td><td class="effort">45 min</td></tr>
+              <tr><td class="id">G-08</td><td class="task">🚦 <strong>(v1.2 新設 / CDO Checkpoint)</strong> Tab 3 Design Review (DropZone / CSV UI)</td><td>Claude (CDO人格)</td><td class="deps">G-07</td><td class="effort">20 min</td></tr>
+            </tbody>
+          </table>
+          <div class="accept"><strong>受け入れ基準:</strong> CSV で 5 件分一括発行し、各トークン URL が submit ページで開ける。再送ボタンで queue に再投入される。G-08 Tab3 Design Review 通過。</div>
+        </div>
+      </div>
+
+      <!-- Phase H -->
+      <div class="phase ph-H">
+        <div class="phase-header">
+          <div class="left">
+            <span class="code">PHASE H</span>
+            <h3>Tab 4: 送信キュー監視</h3>
+          </div>
+          <div class="right">5/26(火) ・ 1日 ・ 5h</div>
+        </div>
+        <div class="phase-body">
+          <table class="tasks">
+            <thead><tr><th style="width:80px;">ID</th><th>タスク</th><th style="width:130px;">担当</th><th style="width:130px;">依存</th><th style="width:80px;">工数</th></tr></thead>
+            <tbody>
+              <tr><td class="id">H-01</td><td class="task">キュー一覧 (queued / sent / failed フィルタ)</td><td>Claude</td><td class="deps">G-07</td><td class="effort">1 h</td></tr>
+              <tr><td class="id">H-02</td><td class="task">Status Badge + エラーメッセージ表示</td><td>Claude</td><td class="deps">H-01</td><td class="effort">30 min</td></tr>
+              <tr><td class="id">H-03</td><td class="task">手動再送 (failed → queued に戻す)</td><td>Claude</td><td class="deps">H-01</td><td class="effort">45 min</td></tr>
+              <tr><td class="id">H-04</td><td class="task">即時送信 (scheduled_at を now にする)</td><td>Claude</td><td class="deps">H-01</td><td class="effort">30 min</td></tr>
+              <tr><td class="id">H-05</td><td class="task">KPI ヘッダー (本日送信件数 / 失敗率)</td><td>Claude</td><td class="deps">H-02</td><td class="effort">45 min</td></tr>
+              <tr><td class="id">H-06</td><td class="task">送信ログ詳細 Drawer</td><td>Claude</td><td class="deps">H-02</td><td class="effort">45 min</td></tr>
+              <tr><td class="id">H-07</td><td class="task">E2E + UX レビュー</td><td>CEO + Claude</td><td class="deps">H-06</td><td class="effort">45 min</td></tr>
+              <tr><td class="id">H-08</td><td class="task">🚦 <strong>(v1.2 新設 / CDO Checkpoint)</strong> Tab 4 Design Review + 全 UI 統合 Design Audit</td><td>Claude (CDO人格)</td><td class="deps">H-07</td><td class="effort">30 min</td></tr>
+            </tbody>
+          </table>
+          <div class="accept"><strong>🎯 M2 達成基準:</strong> 4 タブ全てが UX レビュー + CDO Design Review (E-13/F-12/G-08/H-08) 合格。CEO が「これなら毎日 30 分で運用できる」と確認。</div>
+        </div>
+      </div>
+
+      <!-- Phase I -->
+      <div class="phase ph-I">
+        <div class="phase-header">
+          <div class="left">
+            <span class="code">PHASE I</span>
+            <h3>Webhook 受信 (orders/fulfilled) （クリティカルパス ⚡）</h3>
+          </div>
+          <div class="right">5/27(水) ・ 1日 ・ 5.5h</div>
+        </div>
+        <div class="phase-body">
+          <table class="tasks">
+            <thead><tr><th style="width:80px;">ID</th><th>タスク</th><th style="width:130px;">担当</th><th style="width:130px;">依存</th><th style="width:80px;">工数</th></tr></thead>
+            <tbody>
+              <tr class="critical"><td class="id">I-01</td><td class="task">Shopify Managed Webhook subscription (orders/fulfilled)</td><td>Claude</td><td class="deps">H-07</td><td class="effort">30 min</td></tr>
+              <tr><td class="id">I-02</td><td class="task">HMAC 検証 (Shopify Remix authenticate.webhook helper)</td><td>Claude</td><td class="deps">I-01</td><td class="effort">15 min</td></tr>
+              <tr class="critical"><td class="id">I-03</td><td class="task">商品 → コレクション → 最適 config 解決ロジック (port from Hydrogen)</td><td>Claude</td><td class="deps">I-02</td><td class="effort">1.5 h</td></tr>
+              <tr class="critical"><td class="id">I-04</td><td class="task">queue エントリ作成 (scheduled_at = fulfilled_at + delay_days)</td><td>Claude</td><td class="deps">I-03</td><td class="effort">45 min</td></tr>
+              <tr><td class="id">I-05</td><td class="task">重複防止 (order_id 既存チェック)</td><td>Claude</td><td class="deps">I-04</td><td class="effort">30 min</td></tr>
+              <tr><td class="id">I-06</td><td class="task">エラーハンドリング + Sentry 連携</td><td>Claude</td><td class="deps">I-05</td><td class="effort">30 min</td></tr>
+              <tr><td class="id">I-07</td><td class="task">E2E: ステージング注文発送 → queue に正しく入る</td><td>Claude</td><td class="deps">I-06</td><td class="effort">1 h</td></tr>
+              <tr><td class="id">I-08</td><td class="task">Shopify Flow workflow の URL を Fly.io URL に切替</td><td>Claude (Chrome MCP)</td><td class="deps">I-07</td><td class="effort">15 min</td></tr>
+            </tbody>
+          </table>
+          <div class="accept"><strong>受け入れ基準:</strong> テスト注文を発送状態にすると、5 秒以内に queue 入り。重複は弾かれる。Flow と Webhook の両方が動作。</div>
+        </div>
+      </div>
+
+      <!-- Phase J -->
+      <div class="phase ph-J">
+        <div class="phase-header">
+          <div class="left">
+            <span class="code">PHASE J</span>
+            <h3>Shopify Flow + Shopify Email 連携 （クリティカルパス ⚡）</h3>
+          </div>
+          <div class="right">5/28(木) ・ 0.5日 ・ 3.5h <small>(v1.3 で SendGrid 削除・3 日 → 0.5 日に短縮)</small></div>
+        </div>
+        <div class="phase-body">
+          <div style="background:#ecfdf5;border-left:3px solid #14b8a6;padding:10px 14px;margin-bottom:10px;font-size:13px;line-height:1.6;">
+            <strong>v1.3 変更点 (2026-05-14)</strong>: SendGrid 採用予定だったが、Shopify Flow + Shopify Email で完全代替可能と判断 (CEO 指摘)。DMARC/SPF/DKIM 自前設定・Cron 実装・API key 管理が全て不要に。Phase J は <strong>3 日 → 0.5 日</strong> に短縮 (-12.5h)。
+          </div>
+          <table class="tasks">
+            <thead><tr><th style="width:80px;">ID</th><th>タスク</th><th style="width:130px;">担当</th><th style="width:130px;">依存</th><th style="width:80px;">工数</th></tr></thead>
+            <tbody>
+              <tr><td class="id">J-01</td><td class="task">Shopify Admin → Marketing → Email Templates で新規テンプレート作成 (商品レビュー依頼)</td><td>Claude (Chrome MCP)</td><td class="deps">-</td><td class="effort">20 min</td></tr>
+              <tr class="critical"><td class="id">J-02</td><td class="task">App `/api/tokens/issue` endpoint 実装 (UUID v4 発行 + Metaobject astromeda_review_token 保存 + 90日期限)</td><td>Claude</td><td class="deps">B-05</td><td class="effort">45 min</td></tr>
+              <tr class="critical"><td class="id">J-03</td><td class="task">既存 Shopify Flow (id `01KRJ1JF33PNW1ENMTQZ584SN5`) に HTTP request 行を追加 → `/api/tokens/issue` を呼出 → 返却 URL を flow_variable に保存</td><td>Claude (Chrome MCP)</td><td class="deps">J-02</td><td class="effort">30 min</td></tr>
+              <tr><td class="id">J-04</td><td class="task">Flow に Email アクションを連結 → 上記 J-01 テンプレートを選択 → Liquid 変数 `{{ flow_variable.review_url }}` を CTA URL にセット</td><td>Claude (Chrome MCP)</td><td class="deps">J-03</td><td class="effort">20 min</td></tr>
+              <tr class="critical"><td class="id">J-05</td><td class="task">📧 <strong>(CMO)</strong> Email Visual Design + Copywriting Review<br>Shopify Email Template Editor で Brand Token (Teal #14b8a6) 適用 / ロゴ / 余白 / CTA ボタン。Gmail / iOS Mail / Outlook 各レンダリング確認</td><td>Claude (CMO人格)</td><td class="deps">J-04</td><td class="effort">60 min</td></tr>
+              <tr><td class="id">J-06</td><td class="task">📝 <strong>(CMO)</strong> Subject A/B variant 2 案準備 (Shopify Email の A/B Test 機能で切替)<br>「ご感想をお聞かせください」vs「3 分でレビュー投稿のお願い」</td><td>Claude</td><td class="deps">J-05</td><td class="effort">20 min</td></tr>
+              <tr><td class="id">J-07</td><td class="task">E2E: テスト用 dev order を発火 → Flow を即時実行 (14日 delay は staging では短縮版に上書き) → 武正さんの mining-base メールアドレスに着信確認</td><td>Claude (Chrome MCP) + CEO</td><td class="deps">J-06</td><td class="effort">25 min</td></tr>
+            </tbody>
+          </table>
+          <div class="accept"><strong>🎯 M3 達成基準:</strong> 武正さん自身のメールアドレスに Shopify Email 経由で HTML メール (Brand Token 適用済) が届く。Gmail / iOS Mail / Outlook で正しく表示。CTA リンクから token 付き投稿ページ (App Proxy /apps/reviews/submit?token=) にアクセスし、token が valid と検証されることを確認。</div>
+        </div>
+      </div>
+
+      <!-- Phase K -->
+      <div class="phase ph-K">
+        <div class="phase-header">
+          <div class="left">
+            <span class="code">PHASE K</span>
+            <h3>公開ルート（お客様向け投稿フォーム / App Proxy 経由）</h3>
+          </div>
+          <div class="right">5/29 - 6/1 ・ 2日 ・ 11h</div>
+        </div>
+        <div class="phase-body">
+          <table class="tasks">
+            <thead><tr><th style="width:80px;">ID</th><th>タスク</th><th style="width:130px;">担当</th><th style="width:130px;">依存</th><th style="width:80px;">工数</th></tr></thead>
+            <tbody>
+              <tr><td class="id">K-01</td><td class="task"><strong>新</strong> App Proxy 設定 (shop.mining-base.co.jp/apps/reviews → Fly.io)</td><td>Claude</td><td class="deps">J-09</td><td class="effort">30 min</td></tr>
+              <tr><td class="id">K-02</td><td class="task"><code>/proxy/reviews/submit</code> Loader: トークン検証 + 商品取得</td><td>Claude</td><td class="deps">K-01</td><td class="effort">1 h</td></tr>
+              <tr><td class="id">K-03</td><td class="task">投稿フォーム UI (Polaris ではなく軽量カスタム CSS 推奨)</td><td>Claude</td><td class="deps">K-02</td><td class="effort">1.5 h</td></tr>
+              <tr><td class="id">K-04</td><td class="task">写真アップロード UI (DropZone + プレビュー / 最大 6 枚)</td><td>Claude</td><td class="deps">K-03</td><td class="effort">1 h</td></tr>
+              <tr><td class="id">K-05</td><td class="task">POST handler: バリデーション + Shopify Files upload + Review 作成</td><td>Claude</td><td class="deps">K-04</td><td class="effort">1.5 h</td></tr>
+              <tr><td class="id">K-06</td><td class="task">トークン消費 (used_at 設定)</td><td>Claude</td><td class="deps">K-05</td><td class="effort">15 min</td></tr>
+              <tr><td class="id">K-07</td><td class="task"><code>/proxy/reviews/complete</code> Thank you ページ</td><td>Claude</td><td class="deps">K-05</td><td class="effort">30 min</td></tr>
+              <tr><td class="id">K-08</td><td class="task">エラー画面 (期限切れ / 使用済 / 不正トークン)</td><td>Claude</td><td class="deps">K-02</td><td class="effort">45 min</td></tr>
+              <tr><td class="id">K-09</td><td class="task">モバイルレスポンシブ確認 (iOS Safari / Android Chrome)</td><td>Claude</td><td class="deps">K-04</td><td class="effort">1 h</td></tr>
+              <tr><td class="id">K-10</td><td class="task">ASTROMEDA ブランドデザイン適用 (header / footer)</td><td>Claude</td><td class="deps">K-09</td><td class="effort">1 h</td></tr>
+              <tr><td class="id">K-11</td><td class="task">E2E: メール → URL → 投稿 → 管理画面に pending 表示</td><td>Claude</td><td class="deps">K-10</td><td class="effort">1 h</td></tr>
+            </tbody>
+          </table>
+          <div class="accept"><strong>受け入れ基準:</strong> Phase J で送信したメールの URL を開くと、ブランド適用された投稿フォームが表示。投稿後、管理画面 (Phase E) に pending 状態で表示される。</div>
+        </div>
+      </div>
+
+      <!-- Phase L -->
+      <div class="phase ph-L">
+        <div class="phase-header">
+          <div class="left">
+            <span class="code">PHASE L</span>
+            <h3>Hydrogen 完全剥離 ・ 旧資産削除 （クリティカルパス ⚡ / v1.2 日数算術修正）</h3>
+          </div>
+          <div class="right">6/1(月)-6/3(水) ・ 3日 ・ 8h (L-01 並走稼働3日と整合)</div>
+        </div>
+        <div class="phase-body">
+          <table class="tasks">
+            <thead><tr><th style="width:80px;">ID</th><th>タスク</th><th style="width:130px;">担当</th><th style="width:130px;">依存</th><th style="width:80px;">工数</th></tr></thead>
+            <tbody>
+              <tr class="critical"><td class="id">L-01</td><td class="task">並走稼働期間: 旧 (Hydrogen) と 新 (Fly.io) を同時稼働、CEO に新側で承認操作してもらう (3日間)</td><td>CEO + Claude</td><td class="deps">K-11</td><td class="effort">3 d 並走</td></tr>
+              <tr><td class="id">L-02</td><td class="task">既存 Hydrogen pending レビューを新 App で全件処理 (移行ではなく承認運用)</td><td>CEO</td><td class="deps">L-01</td><td class="effort">30 min</td></tr>
+              <tr class="critical"><td class="id">L-03</td><td class="task">⭐ Hydrogen 7 ファイル削除 (1 PR)<br>　 admin.reviews.tsx, api.admin.review-*.ts (3本), webhooks.orders.fulfilled.ts, apps.reviews.submit.tsx, apps.reviews.complete.tsx</td><td>Claude</td><td class="deps">L-02</td><td class="effort">45 min</td></tr>
+              <tr class="critical"><td class="id">L-04</td><td class="task">⭐ shopify.app.toml から旧 [app_proxy] と [[webhooks.subscriptions]] 削除</td><td>Claude</td><td class="deps">L-03</td><td class="effort">15 min</td></tr>
+              <tr><td class="id">L-05</td><td class="task">Hydrogen 側 CI/CD 緑判定確認 (ビルド成功)</td><td>Claude</td><td class="deps">L-04</td><td class="effort">30 min</td></tr>
+              <tr><td class="id">L-06</td><td class="task">Shopify Flow ワークフロー URL 切替 (Fly.io 側に向ける) - 既に I-08 済</td><td>Claude</td><td class="deps">L-05</td><td class="effort">確認のみ</td></tr>
+              <tr><td class="id">L-07</td><td class="task">旧 App Proxy URL (shop.mining-base.co.jp/apps/reviews/*) が 404 か新側にプロキシされるか確認</td><td>Claude</td><td class="deps">L-04</td><td class="effort">30 min</td></tr>
+              <tr><td class="id">L-08</td><td class="task">旧 Metaobject に残ったテストデータをクリーンアップ</td><td>Claude</td><td class="deps">L-02</td><td class="effort">30 min</td></tr>
+              <tr><td class="id">L-09</td><td class="task">CEO 全機能再ウォークスルー (30 分)</td><td>CEO + Claude</td><td class="deps">L-07</td><td class="effort">30 min</td></tr>
+            </tbody>
+          </table>
+          <div class="accept"><strong>🎯 M4 達成基準:</strong> Hydrogen サイドに口コミ関連コードが完全に存在しない (git grep "review" がコメント除き 0 件)。Shopify Admin サイドバーからのみアクセス可能。</div>
+        </div>
+      </div>
+
+      <!-- Phase M-Audit (v1.1 追加 / v1.2 日付調整) -->
+      <div class="phase" style="--phase-color: #6b46c1;">
+        <div class="phase-header">
+          <div class="left">
+            <span class="code">PHASE M-AUDIT</span>
+            <h3>4視点 独立 Chrome MCP 監査 （クリティカルパス ⚡ / v1.1 新設）</h3>
+          </div>
+          <div class="right">6/4(木) ・ 1日 ・ 5.5h (L 延長により後倒し)</div>
+        </div>
+        <div class="phase-body">
+          <table class="tasks">
+            <thead><tr><th style="width:80px;">ID</th><th>タスク</th><th style="width:130px;">担当 (人格)</th><th style="width:130px;">依存 / Spec参照</th><th style="width:80px;">工数</th></tr></thead>
+            <tbody>
+              <tr class="critical">
+                <td class="id">M-A1</td>
+                <td class="task"><strong>🎨 CDO視点 独立監査 (Polaris整合・A11y・状態網羅)</strong><br>
+                Chrome MCP で全4タブ + Modal + EmptyState を巡回。Lighthouse A11y 実行・Axe DevTools 自動監査・Polaris コンポーネント実物検証・状態網羅マトリクス 50 セル目視確認・マイクロコピー辞書照合。<br>
+                <strong>Pass:</strong> Lighthouse A11y 90+ / Axe critical 0件 / 50/50 状態網羅 / Polaris-only 確認 / マイクロコピー 100% 一致</td>
+                <td>Claude (CDO人格)<br>独立実行</td>
+                <td class="deps">L-09<br>Spec §1, §6, §7, §8, §9</td>
+                <td class="effort">90 min</td>
+              </tr>
+              <tr class="critical">
+                <td class="id">M-A2</td>
+                <td class="task"><strong>⚙️ CTO視点 独立監査 (Performance・Security・SLO)</strong><br>
+                Chrome MCP で DevTools Network / Performance / Lighthouse 計測実行。Session Token 検証・HMAC webhook 検証・Rate Limit 実機テスト (429確認)・Sentry エラー追跡確認。<br>
+                <strong>Pass:</strong> Lighthouse Perf 95+ / LCP &lt; 2.5s / INP &lt; 200ms / Bundle &lt; 200KB / 全SLO達成 / セキュリティ抜け穴 0件</td>
+                <td>Claude (CTO人格)<br>独立実行</td>
+                <td class="deps">M-A1<br>Spec §11, §9 (security)</td>
+                <td class="effort">90 min</td>
+              </tr>
+              <tr class="critical">
+                <td class="id">M-A3</td>
+                <td class="task"><strong>📣 CMO視点 独立監査 (ブランド・トーン・GTM)</strong><br>
+                Chrome MCP でお客様向け <code>/apps/reviews/submit</code> を巡回。iOS Safari / Android Chrome シミュレーション。ASTROMEDA ブランド色照合・日本語トーン文言確認・トラストシグナル (購入認証/ギフトバッジ) 確認・ステマ法対応確認・競合差別化 (Yotpo/Judge.me比) 検証。<br>
+                <strong>Pass:</strong> 3分以内投稿シミュ達成 / ブランド色 #14b8a6 等正確 / 信頼バッジ表示 / モバイルUX 合格</td>
+                <td>Claude (CMO人格)<br>独立実行</td>
+                <td class="deps">M-A2<br>Spec §3 (Journey A), §10, §12</td>
+                <td class="effort">60 min</td>
+              </tr>
+              <tr class="critical">
+                <td class="id">M-A4</td>
+                <td class="task"><strong>👔 CEO視点 独立監査 (Merchant Outcome・TTFSA)</strong><br>
+                Chrome MCP で Shopify admin に「初見ユーザー」としてログイン。ドキュメント無しで「サイドバー → 口コミ管理 → 10件承認」をストップウォッチ計測実行。<br>
+                <strong>Pass:</strong> TTFSA &lt; 60秒 / 10件承認 &lt; 5分 / 認知負荷 (Cognitive Walkthrough) スコア高評価 / 誤クリック 0件 / 「次の業務に戻れる」体感</td>
+                <td>Claude (CEO人格)<br>独立実行</td>
+                <td class="deps">M-A3<br>Spec §2 (Persona #2), §3 (Journey B), §13</td>
+                <td class="effort">60 min</td>
+              </tr>
+              <tr class="critical">
+                <td class="id">M-A5</td>
+                <td class="task"><strong>📊 4監査統合レポート + Go/No-Go 判定</strong><br>
+                M-A1〜A4 の各監査結果を1つの HTML レポートに統合。スクリーンショット・Lighthouse スコア・メトリクス一覧を visualize。1視点でも Fail なら Go-Live 不可で該当Phase に diff back。<br>
+                <strong>Pass:</strong> 4視点全てが独立に Pass 判定 → 武正さん最終承認 (M-07)</td>
+                <td>Claude + CEO最終確認</td>
+                <td class="deps">M-A4<br>全 Spec §</td>
+                <td class="effort">30 min</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="accept">
+            <strong>🎯 受け入れ基準:</strong> 4視点 (CDO / CTO / CMO / CEO) が<strong>独立人格として</strong>監査を実行し、全 Pass。1視点でも Fail なら戻り。本Phase は M-05 (A11y) / M-06 (Security) を内包するため、それらは M-A1 / M-A2 に統合され短縮される。
+            <br>
+            <strong>💡 設計思想:</strong> 「実装者と検証者が同一人物だと盲点を見逃す」リスクを<strong>人格分離Chrome MCP独立実行</strong>で緩和。これは Shopify 内部の C-suite クロスレビューと同等の品質保証。
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase M -->
+      <div class="phase ph-M">
+        <div class="phase-header">
+          <div class="left">
+            <span class="code">PHASE M</span>
+            <h3>Go-Live ・ ドキュメント ・ 段階リリース （クリティカルパス ⚡ / v1.2 段階リリース追加）</h3>
+          </div>
+          <div class="right">6/5(金) - 6/8(月) ・ 1.5日 ・ 7h</div>
+        </div>
+        <div class="phase-body">
+          <table class="tasks">
+            <thead><tr><th style="width:80px;">ID</th><th>タスク</th><th style="width:130px;">担当</th><th style="width:130px;">依存</th><th style="width:80px;">工数</th></tr></thead>
+            <tbody>
+              <tr><td class="id">M-01</td><td class="task">運用マニュアル (CEO 向け / 新人スタッフ向け)</td><td>Claude</td><td class="deps">L-09</td><td class="effort">1.5 h</td></tr>
+              <tr><td class="id">M-02</td><td class="task">障害対応 Runbook (失敗キュー再送 / トークン再発行 / etc)</td><td>Claude</td><td class="deps">M-01</td><td class="effort">45 min</td></tr>
+              <tr><td class="id">M-03</td><td class="task">Fly.io メトリクス確認 + Sentry alert 設定</td><td>Claude</td><td class="deps">L-09</td><td class="effort">45 min</td></tr>
+              <tr><td class="id">M-04</td><td class="task">バックアップ / リストア手順書</td><td>Claude</td><td class="deps">M-02</td><td class="effort">30 min</td></tr>
+              <tr><td class="id">M-05</td><td class="task">A11y 監査 (Polaris 標準準拠確認)</td><td>Claude</td><td class="deps">M-01</td><td class="effort">45 min</td></tr>
+              <tr><td class="id">M-06</td><td class="task">セキュリティ最終確認 (HMAC / Rate / RBAC / Audit Log)</td><td>Claude</td><td class="deps">M-01</td><td class="effort">45 min</td></tr>
+              <tr><td class="id">M-07</td><td class="task">CEO 最終承認 + 本番ロードテスト (k6 で 100 req/s × 5分間 + spike 500 req/s × 1分)</td><td>CEO + Claude (v1.2 強化)</td><td class="deps">M-06</td><td class="effort">1.5 h</td></tr>
+              <tr class="critical"><td class="id">M-08</td><td class="task">🔄 <strong>(v1.2 新設 / CTO)</strong> Rollback Drill - 障害シナリオ訓練<br>① App Bridge 異常 ② Shopify Flow / Email 障害 ③ Webhook 二重発火 を意図的発火し復旧時間計測。MTTR &lt; 5分 を確認</td><td>Claude</td><td class="deps">M-07</td><td class="effort">45 min</td></tr>
+              <tr class="critical"><td class="id">M-09</td><td class="task">🚀 <strong>(v1.2 新設 / CEO)</strong> 段階リリース Day 1 - 10% 限定 (注文IDの末尾1桁=0)<br>新サブスクリプション flag で 10% のお客様のみ新フロー対象。24時間モニター</td><td>Claude + CEO</td><td class="deps">M-08</td><td class="effort">30 min</td></tr>
+              <tr class="critical"><td class="id">M-10</td><td class="task">🚀 <strong>(v1.2 新設 / CEO)</strong> 段階リリース Day 2 - 50% 拡大 (末尾0-4)<br>10% でエラー率 &lt; 1% を確認後 50% に拡大。さらに 24時間モニター</td><td>Claude + CEO</td><td class="deps">M-09</td><td class="effort">15 min</td></tr>
+              <tr class="critical"><td class="id">M-11</td><td class="task">🚀 <strong>(v1.2 新設 / CEO)</strong> 段階リリース Day 3 - 100% Go-Live + リリースノート<br>50% で OK 確認後 100% 全件適用。社内・お客様向け告知</td><td>CEO + Claude (CMO人格)</td><td class="deps">M-10</td><td class="effort">30 min</td></tr>
+            </tbody>
+          </table>
+          <div class="accept"><strong>🎯 M5 達成基準:</strong> 本番ロードテスト合格 (100 req/s 5分間 + spike 500 req/s)。Rollback drill 通過 (MTTR &lt; 5分)。10% → 50% → 100% 段階リリース完了。エラー率 &lt; 1% / 全期間 SLO 維持。</div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ===== Risks ===== -->
+  <section>
+    <h2>5. リスク登録 ・ 依存関係</h2>
+    <div class="section-body">
+      <table class="risk-table">
+        <thead>
+          <tr><th style="width:60px;">ID</th><th>リスク</th><th style="width:90px;">重要度</th><th style="width:90px;">確率</th><th>緩和策</th><th style="width:120px;">Owner</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>R-01</td><td>Shopify Embedded App の Session Token 認証が想定より複雑で実装遅延</td><td><span class="severity sev-M">中</span></td><td><span class="severity sev-M">30%</span></td><td>Shopify Remix template のサンプルコードに沿って実装。Phase C 開始時にスパイク (2h) を実施し、難易度判定。</td><td>Claude</td></tr>
+          <tr><td>R-02</td><td>Fly.io 無料枠超過 (cron 頻度・ストア規模次第)</td><td><span class="severity sev-L">低</span></td><td><span class="severity sev-L">10%</span></td><td>cron を 1 時間毎ではなく queue 件数次第で自動スケール。Fly metrics で監視。超過時 $5/月程度。</td><td>Claude</td></tr>
+          <tr><td>R-03</td><td>Shopify Email 無料枠 (月10,000通) 超過</td><td><span class="severity sev-L">低</span></td><td><span class="severity sev-L">5%</span></td><td>ASTROMEDA 月間発送件数 1,000 件規模なら 1 年以上余裕あり。Shopify Plus アップグレード or Klaviyo 連携で追加。Phase J で配信量モニター設定。</td><td>Claude + CEO</td></tr>
+          <tr><td>R-04</td><td>並走期間 (L-01) 中の二重メール送信 / 二重 webhook 受信</td><td><span class="severity sev-H">高</span></td><td><span class="severity sev-M">40%</span></td><td>並走中は Hydrogen 側 webhook を一時無効化 (shopify.app.toml の subscription を release 前にコメントアウト)。新側の order_id デデュープを徹底。</td><td>Claude</td></tr>
+          <tr><td>R-05</td><td>Polaris UI に既存ブランドカラー (緑 #14b8a6) が反映されない</td><td><span class="severity sev-L">低</span></td><td><span class="severity sev-L">20%</span></td><td>Polaris は意図的にブランド画一化される。管理画面は Shopify 標準デザインで問題なし、公開ルート (K) のみブランド適用。</td><td>Claude + CEO</td></tr>
+          <tr><td>R-06</td><td>OAuth re-install で既存ストアの app 設定 (scopes 等) が消失</td><td><span class="severity sev-H">高</span></td><td><span class="severity sev-L">10%</span></td><td>A-06 で app URL 変更前に Dev Dashboard で現バージョン のスナップショット保存。scopes は既存と同一を維持。</td><td>Claude</td></tr>
+          <tr><td>R-07</td><td>Fly.io 地域選定ミスで日本ユーザーの latency 増加</td><td><span class="severity sev-M">中</span></td><td><span class="severity sev-L">15%</span></td><td>A-04 で primary region = nrt (Narita) を選択。確認時に Lighthouse latency 計測。</td><td>Claude</td></tr>
+          <tr><td>R-08</td><td>Shopify CDP (Customer Data Platform) との競合・整合性</td><td><span class="severity sev-L">低</span></td><td><span class="severity sev-L">5%</span></td><td>本機能は商品レビューであり CDP の顧客プロファイルとは独立。問題なし。</td><td>Claude</td></tr>
+          <tr><td>R-09</td><td>CEO 承認の遅延（M1/M2/M4/M5 で各15-30分必要）</td><td><span class="severity sev-M">中</span></td><td><span class="severity sev-M">30%</span></td><td>マイルストーン日程を事前共有。承認窓口を 30 分以内に区切る。承認不在時は次工程を仮進行し M4 で総点検。</td><td>CEO</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===== Milestones ===== -->
+  <section>
+    <h2>6. マイルストーン一覧</h2>
+    <div class="section-body">
+      <div class="ms-grid">
+        <div class="ms-card">
+          <div class="ms-id">M1</div>
+          <div class="ms-date">2026/05/20 (水)</div>
+          <div class="ms-title">基盤完成 (Foundation Ready)</div>
+          <div class="ms-criteria">Shopify Admin 内に空の Polaris アプリが立ち上がり、サイドバーに「口コミ管理」項目が表示される。4 タブが空状態で正しくレンダリング。Phase A→D 完了。</div>
+        </div>
+        <div class="ms-card">
+          <div class="ms-id">M2</div>
+          <div class="ms-date">2026/05/26 (火)</div>
+          <div class="ms-title">管理画面完成 (Admin UI Complete)</div>
+          <div class="ms-criteria">4 タブ全てが完全機能。CEO が承認 / 設定編集 / トークン発行 / キュー監視を独立操作できる。Phase E→H 完了。</div>
+        </div>
+        <div class="ms-card">
+          <div class="ms-id">M3</div>
+          <div class="ms-date">2026/05/28 (木)</div>
+          <div class="ms-title">バックエンド完成 (Backend Live)</div>
+          <div class="ms-criteria">注文発送イベント → Shopify Flow → App `/api/tokens/issue` → Shopify Email 送信のフロー完全動作。武正さん自身のメールにテストメール到達。Phase I→J 完了。</div>
+        </div>
+        <div class="ms-card critical">
+          <div class="ms-id">M4</div>
+          <div class="ms-date">2026/06/03 (水)</div>
+          <div class="ms-title">Hydrogen 剥離完了 ⚠️</div>
+          <div class="ms-criteria">Hydrogen 側に口コミ関連コードが完全に存在しない。新環境のみで運用。Phase K→L 完了。No-Hydrogen 原則達成。</div>
+        </div>
+        <div class="ms-card gold">
+          <div class="ms-id">M5</div>
+          <div class="ms-date">2026/06/05 (金)</div>
+          <div class="ms-title">🎉 Go-Live</div>
+          <div class="ms-criteria">運用マニュアル整備済、監視設定済、ロードテスト合格、CEO 承認、本番稼働開始。Phase M 完了。プロジェクト完了。</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Resource & Communication Plan ===== -->
+  <section>
+    <h2>7. リソース ・ コミュニケーション計画</h2>
+    <div class="section-body">
+      <div class="exec-grid">
+        <div>
+          <h3 style="font-size:14px;font-weight:700;color:#2d3748;margin-bottom:10px;">CEO 工数見積もり</h3>
+          <table class="tasks">
+            <thead><tr><th>タスク</th><th style="width:120px;">工数</th><th style="width:120px;">日程</th></tr></thead>
+            <tbody>
+              <tr><td>A-01 キックオフ</td><td class="effort">30 min</td><td>5/15 朝</td></tr>
+              <tr><td>A-04 Fly.io アカウント作成</td><td class="effort">5 min</td><td>5/15</td></tr>
+              <tr><td>A-08 GitHub Secret 追加</td><td class="effort">1 min</td><td>5/15</td></tr>
+              <tr><td>E-12 / F-11 UX レビュー</td><td class="effort">合計 1h</td><td>5/22</td></tr>
+              <tr><td>H-07 全 UI レビュー (M2)</td><td class="effort">30 min</td><td>5/26</td></tr>
+              <tr><td>J-01 Shopify Email テンプレート作成</td><td class="effort">20 min</td><td>5/28</td></tr>
+              <tr><td>J-09 メール受信確認 (M3)</td><td class="effort">15 min</td><td>5/28</td></tr>
+              <tr><td>L-01 並走期間運用テスト</td><td class="effort">30 min × 3日</td><td>6/2-3</td></tr>
+              <tr><td>L-09 (M4) 全機能ウォークスルー</td><td class="effort">30 min</td><td>6/3</td></tr>
+              <tr><td>M-07 最終承認 (M5)</td><td class="effort">1 h</td><td>6/5</td></tr>
+              <tr><td><strong>合計</strong></td><td class="effort"><strong>約 5.5h</strong></td><td>16日間分散</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <h3 style="font-size:14px;font-weight:700;color:#2d3748;margin-bottom:10px;">コミュニケーション</h3>
+          <div class="exec-points">
+            <div class="exec-point">
+              <div class="label">Daily Standup</div>
+              <div class="text">なし。Cowork Claude が朝に前日進捗 + 当日計画をテキストで報告（5 分）</div>
+            </div>
+            <div class="exec-point">
+              <div class="label">Weekly Sync</div>
+              <div class="text">毎週金曜 18:00 (10 分) Cowork で進捗確認・課題 escalation</div>
+            </div>
+            <div class="exec-point">
+              <div class="label">Escalation</div>
+              <div class="text">クリティカルパス遅延または重大バグ発見時は即時 Cowork で報告</div>
+            </div>
+            <div class="exec-point">
+              <div class="label">ドキュメント</div>
+              <div class="text">本ガントチャート (この HTML) を週次更新。ADR (アーキテクチャ決定記録) を GitHub に保存</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Sign-off ===== -->
+  <section>
+    <h2>8. 承認</h2>
+    <div class="section-body" style="padding:32px 28px;">
+      <table style="width:100%;border-collapse:collapse;">
+        <tr>
+          <td style="padding:24px;border:1px solid #e2e8f0;border-radius:8px;width:50%;vertical-align:top;">
+            <div style="font-size:11px;text-transform:uppercase;color:#718096;font-weight:700;letter-spacing:1px;">承認者</div>
+            <div style="font-size:18px;font-weight:700;margin-top:6px;color:#1a202c;">武正貴昭</div>
+            <div style="font-size:13px;color:#4a5568;margin-top:2px;">CEO / 株式会社マイニングベース</div>
+            <div style="margin-top:32px;border-bottom:1px solid #2d3748;padding-bottom:30px;">　</div>
+            <div style="font-size:11px;color:#a0aec0;margin-top:6px;">承認日 / 署名</div>
+          </td>
+          <td style="width:24px;"></td>
+          <td style="padding:24px;border:1px solid #e2e8f0;border-radius:8px;width:50%;vertical-align:top;">
+            <div style="font-size:11px;text-transform:uppercase;color:#718096;font-weight:700;letter-spacing:1px;">起案 ・ 実行</div>
+            <div style="font-size:18px;font-weight:700;margin-top:6px;color:#1a202c;">Cowork Claude</div>
+            <div style="font-size:13px;color:#4a5568;margin-top:2px;">CTO 役 / Anthropic Claude Sonnet 4</div>
+            <div style="margin-top:32px;border-bottom:1px solid #2d3748;padding-bottom:30px;color:#4a5568;font-style:italic;">— 自動署名 (2026/05/14) —</div>
+            <div style="font-size:11px;color:#a0aec0;margin-top:6px;">起案日</div>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    ASTROMEDA × Cowork ・ REV-EMB-2026-Q2 ・ 口コミ機能 Embedded App 移行 ・ v1.0 ・ Generated 2026-05-14
+  </footer>
+
+</div>
+</body>
+</html>

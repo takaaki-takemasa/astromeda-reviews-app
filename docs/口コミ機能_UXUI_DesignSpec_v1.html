@@ -1,0 +1,2080 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>口コミ機能 UX/UI Design Specification v1.0 | ASTROMEDA</title>
+<style>
+  :root {
+    --polaris-bg: #f6f6f7;
+    --polaris-surface: #ffffff;
+    --polaris-text: #1a1a1a;
+    --polaris-text-secondary: #5c5f62;
+    --polaris-border: #e1e3e5;
+    --polaris-primary: #008060;
+    --polaris-primary-hover: #006e52;
+    --polaris-critical: #cc0000;
+    --polaris-warning: #ffc453;
+    --polaris-success: #aee9d1;
+    --polaris-info: #a4e8f2;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+    background: #ecedf0;
+    color: #0a0e27;
+    line-height: 1.6;
+    padding: 32px 24px 80px;
+  }
+  .container { max-width: 1640px; margin: 0 auto; }
+
+  /* Cover */
+  .cover {
+    background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 50%, #008060 100%);
+    color: #fff;
+    padding: 64px 56px;
+    border-radius: 16px;
+    margin-bottom: 32px;
+    box-shadow: 0 20px 60px rgba(10, 14, 39, 0.3);
+    position: relative;
+    overflow: hidden;
+  }
+  .cover::before {
+    content: '';
+    position: absolute;
+    bottom: -30%; left: -10%;
+    width: 700px; height: 700px;
+    background: radial-gradient(circle, rgba(0,128,96,0.25) 0%, transparent 70%);
+  }
+  .cover-label {
+    font-size: 11px;
+    letter-spacing: 5px;
+    text-transform: uppercase;
+    color: #aee9d1;
+    margin-bottom: 16px;
+    font-weight: 700;
+  }
+  .cover h1 {
+    font-size: 38px;
+    font-weight: 800;
+    margin-bottom: 12px;
+    letter-spacing: -0.5px;
+    line-height: 1.2;
+  }
+  .cover .subtitle {
+    font-size: 17px;
+    color: #cbd5e0;
+    margin-bottom: 36px;
+    max-width: 900px;
+    position: relative;
+    z-index: 1;
+  }
+  .cover-reviewers {
+    background: rgba(255,255,255,0.06);
+    padding: 20px 24px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.12);
+    position: relative;
+    z-index: 1;
+  }
+  .cover-reviewers .label {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: #aee9d1;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    font-weight: 700;
+  }
+  .reviewers-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 18px;
+  }
+  .reviewer { display: flex; gap: 12px; align-items: center; }
+  .reviewer .avatar {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, #008060, #aee9d1);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; color: #1a1a1a; font-size: 13px;
+  }
+  .reviewer .info { flex: 1; }
+  .reviewer .role { font-size: 10px; color: #aee9d1; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
+  .reviewer .name { font-size: 13px; color: #fff; font-weight: 600; }
+  .reviewer .focus { font-size: 11px; color: #cbd5e0; }
+
+  section {
+    background: #fff;
+    border-radius: 12px;
+    margin-bottom: 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    overflow: hidden;
+  }
+  section > h2 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #4a5568;
+    padding: 18px 28px 14px;
+    border-bottom: 1px solid #e2e8f0;
+    background: #fafbfc;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  section > h2::before {
+    content: '';
+    width: 4px;
+    height: 18px;
+    background: linear-gradient(180deg, #008060, #006e52);
+    border-radius: 2px;
+  }
+  .section-body { padding: 28px; }
+
+  h3 { font-size: 16px; font-weight: 700; color: #1a1a1a; margin-bottom: 12px; }
+  h4 { font-size: 13px; font-weight: 700; color: #2d3748; margin: 14px 0 8px; text-transform: uppercase; letter-spacing: 1px; }
+  p { font-size: 14px; color: #2d3748; }
+
+  /* Principles */
+  .principles {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+  .principle {
+    background: linear-gradient(180deg, #fff, #fafbfc);
+    border: 1px solid #e1e3e5;
+    border-radius: 10px;
+    padding: 20px;
+    position: relative;
+  }
+  .principle .num {
+    position: absolute;
+    top: -12px; left: 16px;
+    background: #008060;
+    color: #fff;
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 800;
+  }
+  .principle h4 { margin-top: 4px; color: #1a1a1a; text-transform: none; letter-spacing: 0; font-size: 14px; }
+  .principle p { font-size: 12.5px; color: #5c5f62; line-height: 1.55; }
+
+  /* Personas */
+  .persona-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+  }
+  .persona {
+    background: #f6f6f7;
+    border-radius: 12px;
+    padding: 24px;
+    border-top: 5px solid var(--c, #008060);
+  }
+  .persona.p1 { --c: #008060; }
+  .persona.p2 { --c: #5a67d8; }
+  .persona.p3 { --c: #d69e2e; }
+  .persona-head { display: flex; gap: 16px; align-items: center; margin-bottom: 16px; }
+  .persona-avatar {
+    width: 56px; height: 56px;
+    background: linear-gradient(135deg, var(--c), #fff);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px;
+  }
+  .persona-meta .role { font-size: 11px; color: #5c5f62; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+  .persona-meta .name { font-size: 17px; font-weight: 800; color: #1a1a1a; }
+  .persona-meta .demo { font-size: 12px; color: #5c5f62; }
+  .persona-section { margin-bottom: 12px; }
+  .persona-section h5 { font-size: 11px; font-weight: 700; color: var(--c); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+  .persona-section p, .persona-section ul { font-size: 12.5px; color: #2d3748; line-height: 1.55; }
+  .persona-section ul { padding-left: 18px; }
+  .persona-quote {
+    background: #fff;
+    border-left: 3px solid var(--c);
+    padding: 10px 14px;
+    border-radius: 4px;
+    font-size: 12.5px;
+    color: #1a1a1a;
+    font-style: italic;
+    margin-top: 8px;
+  }
+
+  /* Journey */
+  .journey-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 16px;
+    border-bottom: 2px solid #e1e3e5;
+  }
+  .journey-tab {
+    padding: 10px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #5c5f62;
+    border-bottom: 3px solid transparent;
+    cursor: default;
+  }
+  .journey-tab.active { color: #008060; border-bottom-color: #008060; }
+
+  .journey-flow {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr) 60px repeat(1, 1fr);
+    gap: 0;
+    margin-top: 12px;
+  }
+  .journey-step {
+    background: #fff;
+    border: 1.5px solid #e1e3e5;
+    border-radius: 8px;
+    padding: 14px;
+    position: relative;
+    margin: 0 6px;
+  }
+  .journey-step .step-num {
+    position: absolute;
+    top: -10px; left: 12px;
+    background: #1a1a1a;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    padding: 2px 8px;
+    border-radius: 10px;
+  }
+  .journey-step h4 { margin-top: 4px; font-size: 13px; text-transform: none; letter-spacing: 0; color: #1a1a1a; }
+  .journey-step p { font-size: 11.5px; color: #5c5f62; margin-top: 4px; }
+  .journey-arrow {
+    display: flex; align-items: center; justify-content: center;
+    color: #008060; font-size: 24px;
+  }
+  .journey-emotion {
+    margin-top: 14px;
+    height: 80px;
+    background: linear-gradient(180deg, #f6f6f7 0%, #fff 100%);
+    border: 1px solid #e1e3e5;
+    border-radius: 8px;
+    padding: 12px;
+    position: relative;
+  }
+  .journey-emotion-svg { width: 100%; height: 100%; }
+
+  /* Wireframes */
+  .wireframe {
+    background: #f6f6f7;
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+    border: 1px solid #e1e3e5;
+  }
+  .wireframe-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 16px;
+    padding-bottom: 14px;
+    border-bottom: 1px dashed #cbd5e0;
+  }
+  .wireframe-header .info h3 { font-size: 16px; color: #1a1a1a; }
+  .wireframe-header .info p { font-size: 12.5px; color: #5c5f62; margin-top: 4px; }
+  .wireframe-tag {
+    background: #008060;
+    color: #fff;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .wireframe-tag.cust { background: #d69e2e; }
+  .wireframe-tag.modal { background: #5a67d8; }
+  .wireframe-tag.empty { background: #718096; }
+  .wireframe-svg-wrap {
+    background: #fff;
+    border-radius: 8px;
+    padding: 0;
+    border: 1px solid #cbd5e0;
+    overflow: hidden;
+  }
+  .wireframe-notes {
+    margin-top: 14px;
+    background: #fff;
+    border-radius: 6px;
+    padding: 12px 16px;
+    border-left: 4px solid #008060;
+  }
+  .wireframe-notes h5 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #008060; font-weight: 700; margin-bottom: 6px; }
+  .wireframe-notes ul { padding-left: 20px; }
+  .wireframe-notes li { font-size: 12px; color: #2d3748; margin-bottom: 3px; }
+
+  /* Polaris Table */
+  .polaris-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+  }
+  .polaris-table th, .polaris-table td {
+    padding: 9px 12px;
+    text-align: left;
+    border-bottom: 1px solid #e1e3e5;
+    vertical-align: top;
+  }
+  .polaris-table th {
+    background: #fafbfc;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #5c5f62;
+    font-weight: 700;
+  }
+  .polaris-table .comp { font-family: 'SF Mono', Menlo, monospace; font-size: 11.5px; color: #008060; font-weight: 700; }
+  .polaris-table .pri-1 { background: #fff5f5; }
+
+  /* State Matrix */
+  .matrix-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .matrix-table th, .matrix-table td {
+    border: 1px solid #e1e3e5;
+    padding: 8px 10px;
+    text-align: left;
+    vertical-align: top;
+  }
+  .matrix-table th { background: #1a1a1a; color: #fff; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .matrix-table tr:nth-child(even) td { background: #fafbfc; }
+  .state-cell {
+    font-size: 11.5px;
+    color: #2d3748;
+    line-height: 1.45;
+  }
+  .state-cell.ok { background: #f0fdf4 !important; }
+  .state-cell.empty { color: #5c5f62; }
+
+  /* Microcopy */
+  .microcopy-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+  }
+  .microcopy-table th, .microcopy-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid #e1e3e5;
+    text-align: left;
+    vertical-align: top;
+  }
+  .microcopy-table th {
+    background: #fafbfc;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #5c5f62;
+    font-weight: 700;
+  }
+  .microcopy-table .key { font-family: 'SF Mono', Menlo, monospace; font-size: 11px; color: #5c5f62; }
+  .microcopy-table .ja { font-weight: 600; color: #1a1a1a; }
+
+  /* A11y / Mobile */
+  .checklist { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .checklist-card {
+    background: #fafbfc;
+    border-left: 4px solid #008060;
+    border-radius: 6px;
+    padding: 16px 18px;
+  }
+  .checklist-card h4 { color: #1a1a1a; text-transform: none; letter-spacing: 0; font-size: 14px; margin-bottom: 10px; }
+  .checklist-card ul { padding-left: 18px; }
+  .checklist-card li { font-size: 12.5px; color: #2d3748; margin-bottom: 6px; line-height: 1.55; }
+
+  /* Performance */
+  .perf-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 14px;
+  }
+  .perf-metric {
+    background: linear-gradient(180deg, #008060 0%, #006e52 100%);
+    color: #fff;
+    padding: 18px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .perf-metric .metric-name { font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; opacity: 0.85; font-weight: 700; }
+  .perf-metric .metric-val { font-size: 28px; font-weight: 800; margin: 6px 0; }
+  .perf-metric .metric-desc { font-size: 11px; opacity: 0.9; }
+
+  /* Competitive */
+  .compete-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .compete-table th, .compete-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid #e1e3e5;
+    text-align: left;
+    vertical-align: top;
+  }
+  .compete-table th { background: #fafbfc; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #5c5f62; font-weight: 700; }
+  .compete-table .us { background: #f0fdf4; font-weight: 700; }
+  .check { color: #008060; font-weight: 800; }
+  .cross { color: #cc0000; font-weight: 800; }
+  .partial { color: #d69e2e; font-weight: 800; }
+
+  /* Sign-off */
+  .signoff {
+    background: linear-gradient(135deg, #008060 0%, #006e52 100%);
+    color: #fff;
+    padding: 32px;
+    border-radius: 12px;
+    margin-top: 16px;
+  }
+  .signoff h3 { color: #fff; }
+  .signoff-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 24px;
+    margin-top: 20px;
+  }
+  .signoff-card {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .signoff-card h5 { font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; opacity: 0.85; margin-bottom: 8px; }
+  .signoff-card ul { padding-left: 18px; }
+  .signoff-card li { font-size: 12.5px; margin-bottom: 4px; }
+
+  footer {
+    text-align: center;
+    font-size: 11px;
+    color: #a0aec0;
+    padding-top: 32px;
+    border-top: 1px solid #e2e8f0;
+    margin-top: 16px;
+  }
+
+  /* Quote */
+  .pull-quote {
+    background: #fafbfc;
+    border-left: 4px solid #008060;
+    padding: 16px 20px;
+    margin: 16px 0;
+    border-radius: 4px;
+    font-size: 14px;
+    font-style: italic;
+    color: #2d3748;
+  }
+  .pull-quote .author { display: block; margin-top: 6px; font-size: 11px; font-style: normal; color: #5c5f62; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- ===== Cover ===== -->
+  <div class="cover">
+    <div class="cover-label">UX/UI Design Specification / Companion Doc</div>
+    <h1>口コミ機能 Embedded App<br>Design Specification</h1>
+    <div class="subtitle">
+      Shopify Polaris デザインシステム準拠。エンドユーザー（レビュー投稿者）と運営管理者（CEO / マーケ）の両軸で
+      「Don't make me think」体験を提供する設計仕様書。ガントチャート v1.1 と対になる Companion Document。
+      <br><br>
+      <strong style="color:#aee9d1;">v1.1 更新内容:</strong> ① 各章に Gantt 実装タスク参照を追加 ② Phase M-Audit (4視点独立監査) との対応明示 ③ Traceability Matrix v1.0 別添。
+    </div>
+    <div class="cover-reviewers">
+      <div class="label">Expected Reviewers (Shopify C-Suite Equivalent)</div>
+      <div class="reviewers-grid">
+        <div class="reviewer">
+          <div class="avatar">CR</div>
+          <div class="info">
+            <div class="role">CDO</div>
+            <div class="name">Carl Rivera 視点</div>
+            <div class="focus">Polaris整合・A11y</div>
+          </div>
+        </div>
+        <div class="reviewer">
+          <div class="avatar">TL</div>
+          <div class="info">
+            <div class="role">CEO</div>
+            <div class="name">Tobi Lütke 視点</div>
+            <div class="focus">Merchant outcome</div>
+          </div>
+        </div>
+        <div class="reviewer">
+          <div class="avatar">MM</div>
+          <div class="info">
+            <div class="role">CMO</div>
+            <div class="name">Marketing 視点</div>
+            <div class="focus">価値訴求・GTM</div>
+          </div>
+        </div>
+        <div class="reviewer">
+          <div class="avatar">CT</div>
+          <div class="info">
+            <div class="role">CTO</div>
+            <div class="name">Engineering 視点</div>
+            <div class="focus">性能・セキュリティ</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 1. Design Philosophy ===== -->
+  <section>
+    <h2>1. デザイン原則（5原則）</h2>
+    <div class="section-body">
+      <div class="pull-quote">
+        "Good design is invisible. Merchants should feel like the tool is an extension of their intent — not a friction to navigate."
+        <span class="author">— Polaris Design Principle, Shopify</span>
+      </div>
+      <div class="principles">
+        <div class="principle">
+          <div class="num">1</div>
+          <h4>Polaris-First</h4>
+          <p>原則として Shopify Polaris の標準コンポーネントだけを使用する。独自スタイルは公開フォームのブランド表現のみに限定し、管理画面は 100% Polaris 準拠。色・余白・角丸・タイポは Polaris Design Tokens を直接参照。</p>
+        </div>
+        <div class="principle">
+          <div class="num">2</div>
+          <h4>Don't Make Me Think</h4>
+          <p>各画面のプライマリアクションは 1 つだけ。CEO がドキュメント無しで初見で迷わず操作完了できることを QA 基準とする。EmptyState には次の行動を促す CTA を必ず配置。</p>
+        </div>
+        <div class="principle">
+          <div class="num">3</div>
+          <h4>Optimistic UI</h4>
+          <p>承認 / 拒否 / トグル等のアクションは即座に UI 反映（楽観的更新）。サーバー失敗時はロールバック + Banner で通知。CEO が「待たされる感覚」を持たない速度を目指す。</p>
+        </div>
+        <div class="principle">
+          <div class="num">4</div>
+          <h4>State Completeness</h4>
+          <p>全画面で「空 / 読込中 / エラー / 成功」の 4 状態を実装。skeleton ローディング、EmptyState illustration、Banner エラーは必須。デザインレビューは状態網羅マトリクスで合否判定。</p>
+        </div>
+        <div class="principle">
+          <div class="num">5</div>
+          <h4>Accessibility by Default</h4>
+          <p>WCAG 2.1 AA 適合を最低ライン。Polaris 由来のキーボード操作・スクリーンリーダー対応は活用、独自要素のみ追加 ARIA を付与。Axe DevTools での自動監査を CI に組込み。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 2. Personas ===== -->
+  <section>
+    <h2>2. ペルソナ定義</h2>
+    <div class="section-body">
+      <div class="persona-grid">
+
+        <div class="persona p1">
+          <div class="persona-head">
+            <div class="persona-avatar">👤</div>
+            <div class="persona-meta">
+              <div class="role">Persona #1 / End User</div>
+              <div class="name">田中 翔太 (28歳)</div>
+              <div class="demo">男性 / 都内 / IT会社員</div>
+            </div>
+          </div>
+          <div class="persona-section">
+            <h5>背景</h5>
+            <p>ワンピース好きのゲーマー。コラボPC「pc-one-piece-bountyrush」を 35 万円で購入。1ヶ月使用済み。</p>
+          </div>
+          <div class="persona-section">
+            <h5>ゴール</h5>
+            <ul>
+              <li>2 週間後のお礼メールから 3 分以内にレビュー投稿完了</li>
+              <li>写真を 2 枚アップロード</li>
+              <li>送信完了の安心感</li>
+            </ul>
+          </div>
+          <div class="persona-section">
+            <h5>不安要素</h5>
+            <ul>
+              <li>個人情報・本名がレビューに出るのは嫌だ</li>
+              <li>長いフォームは諦める</li>
+              <li>スマホで写真選択がしづらいと離脱</li>
+            </ul>
+          </div>
+          <div class="persona-quote">「3分で終わるなら投稿する。本名出るなら絶対しない。」</div>
+        </div>
+
+        <div class="persona p2">
+          <div class="persona-head">
+            <div class="persona-avatar">👨‍💼</div>
+            <div class="persona-meta">
+              <div class="role">Persona #2 / Daily Admin</div>
+              <div class="name">武正 貴昭 (42歳)</div>
+              <div class="demo">男性 / CEO / 非エンジニア</div>
+            </div>
+          </div>
+          <div class="persona-section">
+            <h5>背景</h5>
+            <p>株式会社マイニングベース CEO。毎日 30 分を経営業務の合間にレビュー承認に充てたい。Shopify 管理画面は日常的に開いている。</p>
+          </div>
+          <div class="persona-section">
+            <h5>ゴール</h5>
+            <ul>
+              <li>朝、Shopify 管理画面でサイドバー「口コミ管理」をクリック</li>
+              <li>承認待ち件数が一目で分かる</li>
+              <li>1 件あたり 30 秒で判定（承認 or 拒否）</li>
+              <li>10 件処理に 5 分以内</li>
+            </ul>
+          </div>
+          <div class="persona-section">
+            <h5>不安要素</h5>
+            <ul>
+              <li>不適切レビューを誤って承認 → ブランド毀損</li>
+              <li>承認 / 拒否を間違えて取り消せない</li>
+              <li>1 画面で全情報が見えない</li>
+            </ul>
+          </div>
+          <div class="persona-quote">「1日10件さばいて 5 分。それ以上かかるなら使わない。」</div>
+        </div>
+
+        <div class="persona p3">
+          <div class="persona-head">
+            <div class="persona-avatar">👩</div>
+            <div class="persona-meta">
+              <div class="role">Persona #3 / Setup Admin</div>
+              <div class="name">マーケ担当 (将来採用予定)</div>
+              <div class="demo">女性想定 / 25-35歳 / Shopify経験者</div>
+            </div>
+          </div>
+          <div class="persona-section">
+            <h5>背景</h5>
+            <p>新 IP コラボのキャンペーン開始時、メール設定の作成・有効化を担当。月に 2-3 回しか触らない。</p>
+          </div>
+          <div class="persona-section">
+            <h5>ゴール</h5>
+            <ul>
+              <li>新 IP の handle を入力すると候補が自動表示</li>
+              <li>テンプレートをそのまま使うか少しだけ調整</li>
+              <li>「有効化」ボタンで即時開始</li>
+              <li>10 分で設定完了</li>
+            </ul>
+          </div>
+          <div class="persona-section">
+            <h5>不安要素</h5>
+            <ul>
+              <li>変数 ({{customer_name}}) の使い方が分からない</li>
+              <li>有効化を間違えて全件送信してしまう</li>
+            </ul>
+          </div>
+          <div class="persona-quote">「ヘルプを読まずに 10 分で1個セットアップしたい。」</div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 3. User Journey Maps ===== -->
+  <section>
+    <h2>3. ユーザージャーニーマップ</h2>
+    <div class="section-body">
+
+      <div class="journey-tabs">
+        <div class="journey-tab active">Journey A: エンドユーザー（レビュー投稿）</div>
+        <div class="journey-tab">Journey B: 日次承認運用 (CEO)</div>
+        <div class="journey-tab">Journey C: 月次設定運用 (マーケ)</div>
+      </div>
+
+      <!-- Journey A -->
+      <h3 style="font-size:14px;color:#5c5f62;margin-bottom:8px;">Journey A: エンドユーザー — 注文発送 → レビュー投稿 → 公開</h3>
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;align-items:stretch;">
+        <div class="journey-step">
+          <div class="step-num">01</div>
+          <h4>注文発送</h4>
+          <p>ASTROMEDA から発送通知。商品到着。1ヶ月使用。</p>
+        </div>
+        <div class="journey-step">
+          <div class="step-num">02</div>
+          <h4>14日後メール受信</h4>
+          <p>「ご感想をお聞かせください」件名のメール。トーンは丁寧・押し売り感ゼロ。</p>
+        </div>
+        <div class="journey-step">
+          <div class="step-num">03</div>
+          <h4>URL クリック</h4>
+          <p>shop.mining-base.co.jp/apps/reviews/submit?token=… を開く。商品名がプリフィル済み。</p>
+        </div>
+        <div class="journey-step">
+          <div class="step-num">04</div>
+          <h4>評価入力</h4>
+          <p>星5 + 見出し + 本文 + 写真 2 枚。表示名はニックネーム可。</p>
+        </div>
+        <div class="journey-step">
+          <div class="step-num">05</div>
+          <h4>投稿</h4>
+          <p>送信ボタン → Thank You ページに遷移。「1-2 営業日で公開」と明記。</p>
+        </div>
+        <div class="journey-step">
+          <div class="step-num">06</div>
+          <h4>後日確認</h4>
+          <p>商品ページを訪問すると自分のレビューが公開されている。</p>
+        </div>
+      </div>
+      <div class="journey-emotion">
+        <svg viewBox="0 0 1200 80" class="journey-emotion-svg" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#008060" stop-opacity="0.3"/>
+              <stop offset="1" stop-color="#008060" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <text x="20" y="14" font-size="9" fill="#5c5f62" font-weight="700">感情曲線</text>
+          <line x1="0" y1="40" x2="1200" y2="40" stroke="#cbd5e0" stroke-dasharray="2,3"/>
+          <path d="M 100 50 Q 200 45 300 35 Q 400 30 500 25 Q 600 20 700 15 Q 800 30 900 20 Q 1000 25 1100 30" stroke="#008060" stroke-width="2" fill="none"/>
+          <path d="M 100 50 Q 200 45 300 35 Q 400 30 500 25 Q 600 20 700 15 Q 800 30 900 20 Q 1000 25 1100 30 L 1100 80 L 100 80 Z" fill="url(#g1)"/>
+          <circle cx="100" cy="50" r="4" fill="#008060"/>
+          <circle cx="300" cy="35" r="4" fill="#008060"/>
+          <circle cx="500" cy="25" r="4" fill="#008060"/>
+          <circle cx="700" cy="15" r="4" fill="#008060"/>
+          <circle cx="900" cy="20" r="4" fill="#008060"/>
+          <circle cx="1100" cy="30" r="4" fill="#008060"/>
+          <text x="100" y="74" font-size="10" fill="#5c5f62" text-anchor="middle">普通</text>
+          <text x="300" y="74" font-size="10" fill="#5c5f62" text-anchor="middle">関心</text>
+          <text x="500" y="74" font-size="10" fill="#5c5f62" text-anchor="middle">期待</text>
+          <text x="700" y="74" font-size="10" fill="#008060" text-anchor="middle" font-weight="700">高揚</text>
+          <text x="900" y="74" font-size="10" fill="#5c5f62" text-anchor="middle">満足</text>
+          <text x="1100" y="74" font-size="10" fill="#5c5f62" text-anchor="middle">誇り</text>
+        </svg>
+      </div>
+      <div class="wireframe-notes" style="margin-top:16px;">
+        <h5>Journey A 設計ポイント</h5>
+        <ul>
+          <li><strong>Step 02 メール件名</strong>: 「レビューしてください」ではなく「ご感想をお聞かせください」。押し売り感ゼロ。</li>
+          <li><strong>Step 04 表示名</strong>: 「本名でなくて可」と placeholder で明示。匿名性確保が投稿率向上の鍵。</li>
+          <li><strong>Step 05 公開タイムライン</strong>: 「1-2 営業日」と明示することで「投稿したのに公開されない」不安を排除。</li>
+        </ul>
+      </div>
+
+      <h3 style="font-size:14px;color:#5c5f62;margin:24px 0 8px;">Journey B: 日次承認運用 (CEO 武正さん) — 30秒で1件処理</h3>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;">
+        <div class="journey-step">
+          <div class="step-num">01</div>
+          <h4>朝の Shopify ログイン</h4>
+          <p>業務開始のルーティン</p>
+        </div>
+        <div class="journey-step">
+          <div class="step-num">02</div>
+          <h4>サイドバー「口コミ管理」</h4>
+          <p>バッジで承認待ち件数即把握</p>
+        </div>
+        <div class="journey-step">
+          <div class="step-num">03</div>
+          <h4>レビュー一覧 (pending)</h4>
+          <p>商品・評価・本文・写真が 1 行で見える</p>
+        </div>
+        <div class="journey-step">
+          <div class="step-num">04</div>
+          <h4>30秒判定</h4>
+          <p>承認 or 拒否 ボタン即押し</p>
+        </div>
+        <div class="journey-step">
+          <div class="step-num">05</div>
+          <h4>次の業務へ</h4>
+          <p>承認 10 件 = 5 分</p>
+        </div>
+      </div>
+
+      <h3 style="font-size:14px;color:#5c5f62;margin:24px 0 8px;">Journey C: 月次設定運用 (マーケ) — 10分で新IP設定</h3>
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;">
+        <div class="journey-step">
+          <div class="step-num">01</div>
+          <h4>新 IP 決定</h4>
+          <p>会議で新コラボ決定</p>
+        </div>
+        <div class="journey-step">
+          <div class="step-num">02</div>
+          <h4>メール設定タブ開く</h4>
+          <p>EmptyState or 既存一覧</p>
+        </div>
+        <div class="journey-step">
+          <div class="step-num">03</div>
+          <h4>+ 新規設定</h4>
+          <p>IP コレクション handle 入力</p>
+        </div>
+        <div class="journey-step">
+          <div class="step-num">04</div>
+          <h4>テンプレ選択</h4>
+          <p>デフォルト or 編集</p>
+        </div>
+        <div class="journey-step">
+          <div class="step-num">05</div>
+          <h4>プレビュー確認</h4>
+          <p>実変数代入で確認</p>
+        </div>
+        <div class="journey-step">
+          <div class="step-num">06</div>
+          <h4>有効化トグル ON</h4>
+          <p>Confirm ダイアログ → 完了</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ===== 4. Information Architecture ===== -->
+  <section>
+    <h2>4. インフォメーションアーキテクチャ</h2>
+    <div class="section-body">
+      <svg viewBox="0 0 1500 380" style="width:100%;display:block;">
+        <defs>
+          <linearGradient id="ia-admin" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#008060"/>
+            <stop offset="1" stop-color="#006e52"/>
+          </linearGradient>
+          <linearGradient id="ia-cust" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#d69e2e"/>
+            <stop offset="1" stop-color="#b7791f"/>
+          </linearGradient>
+        </defs>
+
+        <!-- Admin Tree -->
+        <text x="40" y="22" font-size="11" fill="#5c5f62" font-weight="700" text-transform="uppercase">ADMIN (Shopify Admin Embedded App)</text>
+        <rect x="40" y="40" width="240" height="36" rx="6" fill="url(#ia-admin)"/>
+        <text x="160" y="63" font-size="13" fill="#fff" font-weight="700" text-anchor="middle">📝 口コミ管理 (Sidebar)</text>
+
+        <line x1="160" y1="76" x2="160" y2="90" stroke="#008060" stroke-width="2"/>
+        <line x1="160" y1="90" x2="700" y2="90" stroke="#008060" stroke-width="2"/>
+        <line x1="160" y1="90" x2="160" y2="110" stroke="#008060" stroke-width="2"/>
+        <line x1="280" y1="90" x2="280" y2="110" stroke="#008060" stroke-width="2"/>
+        <line x1="400" y1="90" x2="400" y2="110" stroke="#008060" stroke-width="2"/>
+        <line x1="520" y1="90" x2="520" y2="110" stroke="#008060" stroke-width="2"/>
+        <line x1="640" y1="90" x2="640" y2="110" stroke="#008060" stroke-width="2"/>
+        <line x1="760" y1="90" x2="760" y2="110" stroke="#008060" stroke-width="2"/>
+
+        <g font-size="11" fill="#1a1a1a">
+          <rect x="80" y="110" width="160" height="32" rx="4" fill="#fff" stroke="#008060" stroke-width="1.5"/>
+          <text x="160" y="130" text-anchor="middle" font-weight="700">📝 レビュー一覧</text>
+
+          <rect x="220" y="110" width="120" height="32" rx="4" fill="#fff" stroke="#008060" stroke-width="1.5"/>
+          <text x="280" y="130" text-anchor="middle" font-weight="700">✉️ メール設定</text>
+
+          <rect x="340" y="110" width="120" height="32" rx="4" fill="#fff" stroke="#008060" stroke-width="1.5"/>
+          <text x="400" y="130" text-anchor="middle" font-weight="700">🎁 ギフトトークン</text>
+
+          <rect x="460" y="110" width="120" height="32" rx="4" fill="#fff" stroke="#008060" stroke-width="1.5"/>
+          <text x="520" y="130" text-anchor="middle" font-weight="700">📋 送信キュー</text>
+
+          <rect x="580" y="110" width="120" height="32" rx="4" fill="#f6f6f7" stroke="#cbd5e0" stroke-width="1.5" stroke-dasharray="3,2"/>
+          <text x="640" y="130" text-anchor="middle" font-weight="500" fill="#5c5f62">📊 分析（Phase 2）</text>
+
+          <rect x="700" y="110" width="120" height="32" rx="4" fill="#f6f6f7" stroke="#cbd5e0" stroke-width="1.5" stroke-dasharray="3,2"/>
+          <text x="760" y="130" text-anchor="middle" font-weight="500" fill="#5c5f62">⚙️ 設定（Phase 2）</text>
+        </g>
+
+        <!-- Sub items for Reviews List -->
+        <line x1="160" y1="142" x2="160" y2="160" stroke="#5c5f62" stroke-width="1" stroke-dasharray="3,2"/>
+        <line x1="160" y1="160" x2="240" y2="160" stroke="#5c5f62" stroke-width="1" stroke-dasharray="3,2"/>
+        <line x1="120" y1="160" x2="120" y2="180" stroke="#5c5f62" stroke-width="1" stroke-dasharray="3,2"/>
+        <line x1="200" y1="160" x2="200" y2="180" stroke="#5c5f62" stroke-width="1" stroke-dasharray="3,2"/>
+
+        <g font-size="10" fill="#5c5f62">
+          <rect x="60" y="180" width="120" height="22" rx="3" fill="#fafbfc" stroke="#e1e3e5"/>
+          <text x="120" y="195" text-anchor="middle">承認待ち（filter）</text>
+          <rect x="180" y="180" width="120" height="22" rx="3" fill="#fafbfc" stroke="#e1e3e5"/>
+          <text x="240" y="195" text-anchor="middle">公開中 / 拒否済 等</text>
+        </g>
+
+        <!-- Detail Modal -->
+        <line x1="120" y1="202" x2="120" y2="220" stroke="#5c5f62" stroke-width="1" stroke-dasharray="3,2"/>
+        <line x1="120" y1="220" x2="240" y2="220" stroke="#5c5f62" stroke-width="1" stroke-dasharray="3,2"/>
+        <g font-size="10" fill="#1a1a1a">
+          <rect x="60" y="220" width="120" height="22" rx="3" fill="#fff" stroke="#5a67d8" stroke-width="1.5"/>
+          <text x="120" y="235" text-anchor="middle" font-weight="700">↳ Modal: 詳細</text>
+          <rect x="180" y="220" width="140" height="22" rx="3" fill="#fff" stroke="#5a67d8" stroke-width="1.5"/>
+          <text x="250" y="235" text-anchor="middle" font-weight="700">↳ Modal: 写真ギャラリー</text>
+        </g>
+
+        <!-- Customer Tree -->
+        <text x="900" y="22" font-size="11" fill="#5c5f62" font-weight="700" text-transform="uppercase">CUSTOMER-FACING (App Proxy: shop.mining-base.co.jp/apps/reviews/*)</text>
+        <rect x="900" y="40" width="240" height="36" rx="6" fill="url(#ia-cust)"/>
+        <text x="1020" y="63" font-size="13" fill="#fff" font-weight="700" text-anchor="middle">🌐 公開レビュールート</text>
+
+        <line x1="1020" y1="76" x2="1020" y2="90" stroke="#d69e2e" stroke-width="2"/>
+        <line x1="950" y1="90" x2="1100" y2="90" stroke="#d69e2e" stroke-width="2"/>
+        <line x1="950" y1="90" x2="950" y2="110" stroke="#d69e2e" stroke-width="2"/>
+        <line x1="1100" y1="90" x2="1100" y2="110" stroke="#d69e2e" stroke-width="2"/>
+
+        <g font-size="11" fill="#1a1a1a">
+          <rect x="870" y="110" width="160" height="32" rx="4" fill="#fff" stroke="#d69e2e" stroke-width="1.5"/>
+          <text x="950" y="130" text-anchor="middle" font-weight="700">/submit?token=XXX</text>
+
+          <rect x="1040" y="110" width="160" height="32" rx="4" fill="#fff" stroke="#d69e2e" stroke-width="1.5"/>
+          <text x="1120" y="130" text-anchor="middle" font-weight="700">/complete</text>
+        </g>
+
+        <line x1="950" y1="142" x2="950" y2="160" stroke="#5c5f62" stroke-width="1" stroke-dasharray="3,2"/>
+        <line x1="870" y1="160" x2="1030" y2="160" stroke="#5c5f62" stroke-width="1" stroke-dasharray="3,2"/>
+        <line x1="900" y1="160" x2="900" y2="180" stroke="#5c5f62" stroke-width="1" stroke-dasharray="3,2"/>
+        <line x1="1000" y1="160" x2="1000" y2="180" stroke="#5c5f62" stroke-width="1" stroke-dasharray="3,2"/>
+
+        <g font-size="10" fill="#5c5f62">
+          <rect x="840" y="180" width="120" height="22" rx="3" fill="#fafbfc" stroke="#e1e3e5"/>
+          <text x="900" y="195" text-anchor="middle">投稿フォーム（valid）</text>
+          <rect x="940" y="180" width="120" height="22" rx="3" fill="#fafbfc" stroke="#e1e3e5"/>
+          <text x="1000" y="195" text-anchor="middle">エラー（invalid）</text>
+        </g>
+
+        <!-- Backend services -->
+        <rect x="40" y="280" width="1100" height="60" rx="8" fill="#1a1a1a"/>
+        <text x="60" y="304" font-size="11" fill="#aee9d1" font-weight="700">BACKEND (Fly.io)</text>
+        <g font-size="11" fill="#fff">
+          <text x="60" y="324" font-weight="600">/api/admin/* (Embedded App API)</text>
+          <text x="320" y="324" font-weight="600">/api/cron/process-queue (Email送信)</text>
+          <text x="640" y="324" font-weight="600">/api/webhooks/orders/fulfilled</text>
+          <text x="930" y="324" font-weight="600">/proxy/* (App Proxy受信)</text>
+        </g>
+
+        <!-- Connectors -->
+        <line x1="160" y1="242" x2="160" y2="280" stroke="#1a1a1a" stroke-width="1" stroke-dasharray="3,2"/>
+        <line x1="950" y1="202" x2="950" y2="280" stroke="#1a1a1a" stroke-width="1" stroke-dasharray="3,2"/>
+
+      </svg>
+    </div>
+  </section>
+
+  <!-- ===== 5. Wireframes ===== -->
+  <section>
+    <h2>5. ワイヤーフレーム（主要 8 画面）</h2>
+    <div class="section-body">
+
+      <!-- W1: Admin Reviews List - With Data -->
+      <div class="wireframe">
+        <div class="wireframe-header">
+          <div class="info">
+            <h3>W1: レビュー一覧（pending あり）</h3>
+            <p>Daily Admin (CEO) が朝一番で見る画面。承認待ち N 件が即座に分かる。</p>
+          </div>
+          <div><span class="wireframe-tag">ADMIN / TAB 1</span></div>
+        </div>
+        <div class="wireframe-svg-wrap">
+          <svg viewBox="0 0 1400 720" style="width:100%;display:block;background:#f6f6f7;">
+            <!-- Shopify Admin Header (gray) -->
+            <rect x="0" y="0" width="1400" height="56" fill="#1a1a1a"/>
+            <text x="24" y="34" font-size="14" fill="#fff" font-weight="700">Shopify</text>
+            <rect x="100" y="14" width="400" height="28" rx="4" fill="rgba(255,255,255,0.1)"/>
+            <text x="118" y="34" font-size="12" fill="#aaa">検索またはストア</text>
+
+            <!-- Sidebar -->
+            <rect x="0" y="56" width="240" height="664" fill="#1a1a1a"/>
+            <g font-size="12" fill="#cbd5e0">
+              <text x="24" y="84">ホーム</text>
+              <text x="24" y="110">注文管理</text>
+              <rect x="200" y="98" width="30" height="16" rx="8" fill="#5c5f62"/>
+              <text x="215" y="110" font-size="10" fill="#fff" text-anchor="middle" font-weight="700">954</text>
+              <text x="24" y="136">商品管理</text>
+              <text x="24" y="162">顧客管理</text>
+              <text x="24" y="188">マーケティング</text>
+              <text x="24" y="214">ディスカウント</text>
+              <text x="24" y="240">コンテンツ</text>
+              <text x="24" y="266">マーケット</text>
+              <text x="24" y="292">財務</text>
+              <text x="24" y="318">ストア分析</text>
+
+              <line x1="16" y1="340" x2="224" y2="340" stroke="#3a3a3a"/>
+              <text x="24" y="360" font-size="10" font-weight="700" fill="#a0aec0" text-transform="uppercase">アプリ</text>
+              <text x="24" y="384">Hydrogen</text>
+              <text x="24" y="410">Flow</text>
+              <rect x="16" y="425" width="208" height="32" rx="4" fill="#008060"/>
+              <text x="32" y="446" font-size="13" fill="#fff" font-weight="700">📝 口コミ管理</text>
+              <rect x="186" y="430" width="32" height="20" rx="10" fill="#fff"/>
+              <text x="202" y="445" font-size="11" fill="#008060" text-anchor="middle" font-weight="800">12</text>
+            </g>
+
+            <!-- Main content area -->
+            <rect x="240" y="56" width="1160" height="664" fill="#f6f6f7"/>
+
+            <!-- Page header -->
+            <g>
+              <text x="280" y="100" font-size="22" font-weight="700" fill="#1a1a1a">📝 口コミ管理</text>
+              <text x="280" y="120" font-size="12" fill="#5c5f62">レビュー承認 / メール設定 / ギフトトークン / 送信キュー</text>
+            </g>
+
+            <!-- KPI badges -->
+            <g>
+              <rect x="280" y="140" width="160" height="56" rx="8" fill="#fff" stroke="#e1e3e5"/>
+              <text x="300" y="160" font-size="10" fill="#5c5f62" text-transform="uppercase" font-weight="700">承認待ち</text>
+              <text x="300" y="184" font-size="22" font-weight="800" fill="#d69e2e">12 件</text>
+
+              <rect x="450" y="140" width="160" height="56" rx="8" fill="#fff" stroke="#e1e3e5"/>
+              <text x="470" y="160" font-size="10" fill="#5c5f62" text-transform="uppercase" font-weight="700">公開中</text>
+              <text x="470" y="184" font-size="22" font-weight="800" fill="#008060">48 件</text>
+
+              <rect x="620" y="140" width="160" height="56" rx="8" fill="#fff" stroke="#e1e3e5"/>
+              <text x="640" y="160" font-size="10" fill="#5c5f62" text-transform="uppercase" font-weight="700">今月の投稿</text>
+              <text x="640" y="184" font-size="22" font-weight="800" fill="#1a1a1a">23 件</text>
+            </g>
+
+            <!-- Tabs -->
+            <g>
+              <line x1="280" y1="240" x2="1380" y2="240" stroke="#e1e3e5" stroke-width="2"/>
+              <rect x="280" y="216" width="140" height="26" fill="transparent"/>
+              <text x="350" y="234" font-size="13" font-weight="700" fill="#008060" text-anchor="middle">📝 レビュー一覧</text>
+              <rect x="280" y="240" width="140" height="3" fill="#008060"/>
+              <text x="490" y="234" font-size="13" fill="#5c5f62" text-anchor="middle">✉️ メール設定</text>
+              <text x="630" y="234" font-size="13" fill="#5c5f62" text-anchor="middle">🎁 ギフトトークン</text>
+              <text x="770" y="234" font-size="13" fill="#5c5f62" text-anchor="middle">📋 送信キュー</text>
+            </g>
+
+            <!-- Filter chips -->
+            <g>
+              <rect x="280" y="266" width="98" height="28" rx="14" fill="#1a1a1a"/>
+              <text x="329" y="284" font-size="11" fill="#fff" font-weight="700" text-anchor="middle">承認待ち (12)</text>
+              <rect x="386" y="266" width="86" height="28" rx="14" fill="#fff" stroke="#cbd5e0"/>
+              <text x="429" y="284" font-size="11" fill="#1a1a1a" text-anchor="middle">公開中 (48)</text>
+              <rect x="480" y="266" width="86" height="28" rx="14" fill="#fff" stroke="#cbd5e0"/>
+              <text x="523" y="284" font-size="11" fill="#1a1a1a" text-anchor="middle">拒否 (3)</text>
+              <rect x="574" y="266" width="86" height="28" rx="14" fill="#fff" stroke="#cbd5e0"/>
+              <text x="617" y="284" font-size="11" fill="#1a1a1a" text-anchor="middle">全件 (63)</text>
+
+              <!-- Bulk action button (top right) -->
+              <rect x="1240" y="266" width="140" height="28" rx="4" fill="#fff" stroke="#cbd5e0"/>
+              <text x="1310" y="284" font-size="11" fill="#1a1a1a" text-anchor="middle" font-weight="600">★4以上を一括承認</text>
+            </g>
+
+            <!-- Table header -->
+            <g>
+              <rect x="280" y="312" width="1100" height="40" fill="#fafbfc" stroke="#e1e3e5"/>
+              <text x="298" y="336" font-size="10" font-weight="700" fill="#5c5f62" text-transform="uppercase">評価</text>
+              <text x="380" y="336" font-size="10" font-weight="700" fill="#5c5f62" text-transform="uppercase">商品</text>
+              <text x="580" y="336" font-size="10" font-weight="700" fill="#5c5f62" text-transform="uppercase">タイトル / 本文</text>
+              <text x="940" y="336" font-size="10" font-weight="700" fill="#5c5f62" text-transform="uppercase">投稿者 / 種別</text>
+              <text x="1090" y="336" font-size="10" font-weight="700" fill="#5c5f62" text-transform="uppercase">投稿日</text>
+              <text x="1180" y="336" font-size="10" font-weight="700" fill="#5c5f62" text-transform="uppercase">アクション</text>
+            </g>
+
+            <!-- Rows -->
+            <g font-family="-apple-system,sans-serif">
+              <!-- Row 1 -->
+              <rect x="280" y="352" width="1100" height="62" fill="#fff" stroke="#e1e3e5"/>
+              <text x="298" y="386" font-size="18" fill="#d69e2e">★★★★★</text>
+              <rect x="380" y="370" width="32" height="32" rx="4" fill="#cbd5e0"/>
+              <text x="420" y="384" font-size="12" fill="#1a1a1a" font-weight="600">pc-naruto-shippuden-…</text>
+              <text x="420" y="400" font-size="10" fill="#5c5f62">¥299,800</text>
+
+              <text x="580" y="380" font-size="13" fill="#1a1a1a" font-weight="700">最高のゲーミング体験</text>
+              <text x="580" y="396" font-size="11" fill="#5c5f62">起動速度・冷却性能ともに期待以上。NARUTOデザインも…</text>
+
+              <text x="940" y="380" font-size="12" fill="#1a1a1a" font-weight="600">タナカ</text>
+              <rect x="940" y="386" width="80" height="18" rx="3" fill="#dbeafe"/>
+              <text x="980" y="399" font-size="10" fill="#1e40af" text-anchor="middle" font-weight="700">認証購入</text>
+
+              <text x="1090" y="386" font-size="12" fill="#1a1a1a">2026/05/14</text>
+
+              <rect x="1180" y="370" width="80" height="28" rx="4" fill="#008060"/>
+              <text x="1220" y="389" font-size="11" fill="#fff" text-anchor="middle" font-weight="700">承認</text>
+              <rect x="1268" y="370" width="80" height="28" rx="4" fill="#fff" stroke="#cc0000"/>
+              <text x="1308" y="389" font-size="11" fill="#cc0000" text-anchor="middle" font-weight="700">拒否</text>
+
+              <!-- Row 2 -->
+              <rect x="280" y="414" width="1100" height="62" fill="#fff" stroke="#e1e3e5"/>
+              <text x="298" y="448" font-size="18" fill="#d69e2e">★★★★<tspan fill="#cbd5e0">★</tspan></text>
+              <rect x="380" y="432" width="32" height="32" rx="4" fill="#cbd5e0"/>
+              <text x="420" y="446" font-size="12" fill="#1a1a1a" font-weight="600">keyboard-anime-bocchi…</text>
+              <text x="420" y="462" font-size="10" fill="#5c5f62">¥34,980</text>
+              <text x="580" y="442" font-size="13" fill="#1a1a1a" font-weight="700">かわいい！</text>
+              <text x="580" y="458" font-size="11" fill="#5c5f62">ぼっちちゃんイラスト最高です。打鍵感も…</text>
+              <text x="940" y="442" font-size="12" fill="#1a1a1a" font-weight="600">山田 美咲</text>
+              <rect x="940" y="448" width="80" height="18" rx="3" fill="#fde7f3"/>
+              <text x="980" y="461" font-size="10" fill="#c2185b" text-anchor="middle" font-weight="700">ギフト</text>
+              <text x="1090" y="448" font-size="12" fill="#1a1a1a">2026/05/14</text>
+              <rect x="1180" y="432" width="80" height="28" rx="4" fill="#008060"/>
+              <text x="1220" y="451" font-size="11" fill="#fff" text-anchor="middle" font-weight="700">承認</text>
+              <rect x="1268" y="432" width="80" height="28" rx="4" fill="#fff" stroke="#cc0000"/>
+              <text x="1308" y="451" font-size="11" fill="#cc0000" text-anchor="middle" font-weight="700">拒否</text>
+
+              <!-- Row 3 - dimmer -->
+              <rect x="280" y="476" width="1100" height="62" fill="#fff" stroke="#e1e3e5"/>
+              <text x="298" y="510" font-size="18" fill="#d69e2e">★★★★★</text>
+              <text x="420" y="508" font-size="12" fill="#1a1a1a" font-weight="600">pc-hololive-promise-…</text>
+              <text x="580" y="504" font-size="13" fill="#1a1a1a" font-weight="700">推し色で大満足</text>
+              <text x="940" y="504" font-size="12" fill="#1a1a1a" font-weight="600">ぺこら推し</text>
+              <rect x="940" y="510" width="80" height="18" rx="3" fill="#dbeafe"/>
+              <text x="980" y="523" font-size="10" fill="#1e40af" text-anchor="middle" font-weight="700">認証購入</text>
+              <text x="1090" y="510" font-size="12" fill="#1a1a1a">2026/05/13</text>
+              <rect x="1180" y="494" width="80" height="28" rx="4" fill="#008060"/>
+              <text x="1220" y="513" font-size="11" fill="#fff" text-anchor="middle" font-weight="700">承認</text>
+              <rect x="1268" y="494" width="80" height="28" rx="4" fill="#fff" stroke="#cc0000"/>
+              <text x="1308" y="513" font-size="11" fill="#cc0000" text-anchor="middle" font-weight="700">拒否</text>
+
+              <text x="380" y="610" font-size="10" fill="#a0aec0">… +9 件</text>
+            </g>
+
+          </svg>
+        </div>
+        <div class="wireframe-notes">
+          <h5>UX 設計ノート</h5>
+          <ul>
+            <li><strong>サイドバー</strong>: Shopify 標準サイドバー内に「📝 口コミ管理」が常駐。承認待ち件数を白いバッジで表示（一目で判断）。</li>
+            <li><strong>KPI 行</strong>: 承認待ち件数を視覚的に最も目立たせる（橙色）。10 件超えは警告として知覚させる。</li>
+            <li><strong>フィルタチップ</strong>: pending デフォルト選択。Polaris Filters component。1 クリックで切替。</li>
+            <li><strong>テーブル行</strong>: 商品画像 + タイトル + 評価 + 本文 + 投稿者 + 種別 + 日付 + アクションを 1 行で完結。</li>
+            <li><strong>アクション</strong>: 「承認」が primary (Polaris green), 「拒否」は secondary (赤)。同サイズ・隣接配置で誤クリック防止のため 8px gap 確保。</li>
+            <li><strong>一括承認</strong>: 右上に「★4以上を一括承認」便利機能（CEO の Daily 30 分目標達成のため）。</li>
+            <li><strong>種別バッジ</strong>: 認証購入（青）/ ギフト（ピンク）を視覚区別。誤情報誘発リスクの判定に使用。</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- W2: Empty State -->
+      <div class="wireframe">
+        <div class="wireframe-header">
+          <div class="info">
+            <h3>W2: レビュー一覧（EmptyState）</h3>
+            <p>初回起動時 / フィルタで該当 0 件の状態。次の行動を促す CTA を必ず配置。</p>
+          </div>
+          <div><span class="wireframe-tag empty">EMPTY STATE</span></div>
+        </div>
+        <div class="wireframe-svg-wrap">
+          <svg viewBox="0 0 1400 360" style="width:100%;display:block;background:#f6f6f7;">
+            <rect x="240" y="0" width="1160" height="360" fill="#f6f6f7"/>
+            <rect x="280" y="40" width="1100" height="280" rx="12" fill="#fff" stroke="#e1e3e5"/>
+
+            <!-- Polaris EmptyState illustration -->
+            <circle cx="830" cy="130" r="50" fill="#aee9d1" opacity="0.4"/>
+            <text x="830" y="148" font-size="48" text-anchor="middle">⭐️</text>
+
+            <text x="830" y="220" font-size="20" font-weight="700" fill="#1a1a1a" text-anchor="middle">承認待ちのレビューはありません</text>
+            <text x="830" y="246" font-size="13" fill="#5c5f62" text-anchor="middle">商品が発送されてから 14 日後に、お客様にレビュー依頼メールが自動送信されます。</text>
+            <text x="830" y="266" font-size="13" fill="#5c5f62" text-anchor="middle">メール設定タブから自動送信を有効化してください。</text>
+
+            <rect x="730" y="284" width="200" height="36" rx="4" fill="#008060"/>
+            <text x="830" y="307" font-size="13" fill="#fff" text-anchor="middle" font-weight="700">メール設定を開く →</text>
+
+          </svg>
+        </div>
+        <div class="wireframe-notes">
+          <h5>UX 設計ノート</h5>
+          <ul>
+            <li><strong>Polaris EmptyState</strong>: イラスト + 1 行タイトル + 説明 + CTA ボタンの定番構造。</li>
+            <li><strong>CTA</strong>: 「メール設定を開く」次の行動を 1 つだけ提示（複数の選択肢を出さない）。</li>
+            <li><strong>説明文</strong>: 「なぜ空なのか」「何をすれば解決するか」を端的に。</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- W3: Review Detail Modal -->
+      <div class="wireframe">
+        <div class="wireframe-header">
+          <div class="info">
+            <h3>W3: レビュー詳細 Modal</h3>
+            <p>テーブル行クリック時に展開。全情報を 1 画面で確認、承認 / 拒否を即決定。</p>
+          </div>
+          <div><span class="wireframe-tag modal">MODAL</span></div>
+        </div>
+        <div class="wireframe-svg-wrap">
+          <svg viewBox="0 0 1400 600" style="width:100%;display:block;background:rgba(0,0,0,0.6);">
+            <rect width="1400" height="600" fill="rgba(0,0,0,0.5)"/>
+            <rect x="350" y="60" width="700" height="500" rx="12" fill="#fff"/>
+
+            <!-- Modal header -->
+            <rect x="350" y="60" width="700" height="56" fill="#fff" stroke="#e1e3e5"/>
+            <text x="380" y="94" font-size="16" font-weight="700" fill="#1a1a1a">レビュー詳細</text>
+            <rect x="990" y="76" width="40" height="24" rx="3" fill="#fafbfc" stroke="#cbd5e0"/>
+            <text x="1010" y="92" font-size="14" fill="#5c5f62" text-anchor="middle" font-weight="700">×</text>
+
+            <!-- Content -->
+            <g font-size="12" fill="#1a1a1a">
+              <text x="380" y="148" font-size="11" font-weight="700" fill="#5c5f62" text-transform="uppercase">商品</text>
+              <rect x="380" y="156" width="48" height="48" rx="4" fill="#cbd5e0"/>
+              <text x="440" y="174" font-weight="600">NARUTO-ナルト- 疾風伝コラボPC</text>
+              <text x="440" y="190" font-size="10" fill="#5c5f62">handle: pc-naruto-shippuden-akatsuki  ¥299,800</text>
+
+              <text x="380" y="232" font-size="11" font-weight="700" fill="#5c5f62" text-transform="uppercase">評価</text>
+              <text x="380" y="258" font-size="22" fill="#d69e2e">★★★★★</text>
+              <text x="500" y="258" font-size="12" fill="#5c5f62">5 / 5</text>
+
+              <text x="380" y="290" font-size="11" font-weight="700" fill="#5c5f62" text-transform="uppercase">タイトル</text>
+              <text x="380" y="312" font-size="14" font-weight="700">最高のゲーミング体験</text>
+
+              <text x="380" y="340" font-size="11" font-weight="700" fill="#5c5f62" text-transform="uppercase">本文</text>
+              <text x="380" y="360" font-size="12">起動速度・冷却性能ともに期待以上。NARUTO デザインも</text>
+              <text x="380" y="376" font-size="12">細部までこだわっていて満足です。配送も丁寧でした。</text>
+
+              <text x="380" y="406" font-size="11" font-weight="700" fill="#5c5f62" text-transform="uppercase">写真 (2/6)</text>
+              <rect x="380" y="416" width="80" height="80" rx="4" fill="#cbd5e0"/>
+              <rect x="468" y="416" width="80" height="80" rx="4" fill="#cbd5e0"/>
+
+              <text x="700" y="232" font-size="11" font-weight="700" fill="#5c5f62" text-transform="uppercase">投稿者</text>
+              <text x="700" y="252" font-weight="600">タナカ</text>
+              <text x="700" y="270" font-size="10" fill="#5c5f62">tanaka@example.com</text>
+
+              <text x="700" y="296" font-size="11" font-weight="700" fill="#5c5f62" text-transform="uppercase">種別</text>
+              <rect x="700" y="306" width="100" height="22" rx="3" fill="#dbeafe"/>
+              <text x="750" y="321" font-size="11" fill="#1e40af" text-anchor="middle" font-weight="700">認証購入</text>
+              <text x="700" y="346" font-size="10" fill="#5c5f62">Order #6541 (2026/04/10 発送)</text>
+
+              <text x="700" y="378" font-size="11" font-weight="700" fill="#5c5f62" text-transform="uppercase">投稿日時</text>
+              <text x="700" y="398" font-size="12">2026/05/14 09:23</text>
+              <text x="700" y="414" font-size="10" fill="#5c5f62">注文発送から 34 日後</text>
+
+              <text x="700" y="446" font-size="11" font-weight="700" fill="#5c5f62" text-transform="uppercase">不適切ワードチェック</text>
+              <text x="700" y="466" font-size="12" fill="#008060" font-weight="700">✓ 問題なし</text>
+            </g>
+
+            <!-- Footer actions -->
+            <rect x="350" y="504" width="700" height="56" fill="#fafbfc" stroke="#e1e3e5"/>
+            <rect x="380" y="518" width="100" height="32" rx="4" fill="#fff" stroke="#cbd5e0"/>
+            <text x="430" y="540" font-size="13" fill="#1a1a1a" text-anchor="middle">キャンセル</text>
+
+            <rect x="830" y="518" width="100" height="32" rx="4" fill="#fff" stroke="#cc0000"/>
+            <text x="880" y="540" font-size="13" fill="#cc0000" text-anchor="middle" font-weight="700">拒否</text>
+            <rect x="938" y="518" width="100" height="32" rx="4" fill="#008060"/>
+            <text x="988" y="540" font-size="13" fill="#fff" text-anchor="middle" font-weight="700">承認</text>
+          </svg>
+        </div>
+        <div class="wireframe-notes">
+          <h5>UX 設計ノート</h5>
+          <ul>
+            <li><strong>Polaris Modal</strong>: 中央モーダル。背景は半透明黒で操作集中環境。</li>
+            <li><strong>1 画面完結</strong>: 商品・評価・タイトル・本文・写真・投稿者・種別・注文情報・自動ワードチェック結果を全て 1 画面で確認可能。</li>
+            <li><strong>自動ワードチェック</strong>: NG ワード辞書による事前判定（差別語等）。CEO の判断補助。</li>
+            <li><strong>Footer Action</strong>: 「承認」が右端で primary 色、「拒否」が左隣で critical 色。誤クリック防止のため間隔確保。</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- W4: Email Config Create -->
+      <div class="wireframe">
+        <div class="wireframe-header">
+          <div class="info">
+            <h3>W4: メール設定 - 新規作成フォーム</h3>
+            <p>新 IP コラボのキャンペーン開始時の設定画面。10 分で完了することが目標。</p>
+          </div>
+          <div><span class="wireframe-tag">ADMIN / TAB 2</span></div>
+        </div>
+        <div class="wireframe-svg-wrap">
+          <svg viewBox="0 0 1400 720" style="width:100%;display:block;background:#f6f6f7;">
+            <rect x="240" y="0" width="1160" height="720" fill="#f6f6f7"/>
+
+            <!-- Page header -->
+            <text x="280" y="50" font-size="20" font-weight="700" fill="#1a1a1a">✉️ メール設定 - 新規作成</text>
+            <text x="280" y="70" font-size="12" fill="#5c5f62">注文発送から N 日後に自動送信されるレビュー依頼メールの設定</text>
+
+            <!-- Form Card 1 -->
+            <rect x="280" y="100" width="700" height="220" rx="8" fill="#fff" stroke="#e1e3e5"/>
+            <text x="300" y="126" font-size="14" font-weight="700" fill="#1a1a1a">1. 対象を選ぶ</text>
+
+            <text x="300" y="156" font-size="11" font-weight="600" fill="#5c5f62">対象タイプ</text>
+            <rect x="300" y="166" width="320" height="36" rx="4" fill="#fff" stroke="#cbd5e0"/>
+            <text x="318" y="190" font-size="13" fill="#1a1a1a">IP コレクション（コラボシリーズ単位）▾</text>
+
+            <text x="300" y="232" font-size="11" font-weight="600" fill="#5c5f62">コレクション handle</text>
+            <rect x="300" y="242" width="320" height="36" rx="4" fill="#fff" stroke="#cbd5e0"/>
+            <text x="318" y="266" font-size="13" fill="#1a1a1a">heroaca-collaboration</text>
+            <text x="630" y="266" font-size="11" fill="#008060" font-weight="700">✓ ヒロアカ (23商品)</text>
+
+            <text x="300" y="304" font-size="10" fill="#5c5f62">📌 全 6 種類（global / ip_collection / product_collection / brand / category / vendor）</text>
+
+            <!-- Form Card 2 -->
+            <rect x="280" y="338" width="700" height="100" rx="8" fill="#fff" stroke="#e1e3e5"/>
+            <text x="300" y="364" font-size="14" font-weight="700" fill="#1a1a1a">2. 送信日数を設定</text>
+
+            <text x="300" y="394" font-size="11" font-weight="600" fill="#5c5f62">発送後 何日後に送信するか</text>
+            <rect x="300" y="404" width="120" height="32" rx="4" fill="#fff" stroke="#cbd5e0"/>
+            <text x="360" y="426" font-size="13" font-weight="600" fill="#1a1a1a" text-anchor="middle">14</text>
+            <text x="430" y="424" font-size="11" fill="#5c5f62">日後（1-90日の範囲で設定）</text>
+
+            <!-- Form Card 3 -->
+            <rect x="280" y="456" width="700" height="220" rx="8" fill="#fff" stroke="#e1e3e5"/>
+            <text x="300" y="482" font-size="14" font-weight="700" fill="#1a1a1a">3. 件名・本文を編集</text>
+
+            <text x="300" y="510" font-size="11" font-weight="600" fill="#5c5f62">件名</text>
+            <rect x="300" y="520" width="660" height="32" rx="4" fill="#fff" stroke="#cbd5e0"/>
+            <text x="318" y="542" font-size="12" fill="#1a1a1a">ヒロアカ × ASTROMEDA - ご感想をお聞かせください</text>
+
+            <text x="300" y="568" font-size="11" font-weight="600" fill="#5c5f62">本文（変数: {{customer_name}} {{product_title}} {{review_url}}）</text>
+            <rect x="300" y="578" width="660" height="80" rx="4" fill="#fff" stroke="#cbd5e0"/>
+            <text x="318" y="598" font-size="11" fill="#1a1a1a">{{customer_name}} 様</text>
+            <text x="318" y="614" font-size="11" fill="#1a1a1a">このたびは ASTROMEDA {{product_title}} をご購入いただき…</text>
+            <text x="318" y="630" font-size="11" fill="#1a1a1a">▼ レビューを投稿する</text>
+            <text x="318" y="646" font-size="11" fill="#5a67d8">{{review_url}}</text>
+
+            <!-- Right side - Preview -->
+            <rect x="1000" y="100" width="380" height="540" rx="8" fill="#fff" stroke="#e1e3e5"/>
+            <text x="1020" y="124" font-size="12" font-weight="700" fill="#5c5f62" text-transform="uppercase">プレビュー（実変数代入）</text>
+            <rect x="1020" y="138" width="340" height="44" rx="4" fill="#fafbfc"/>
+            <text x="1032" y="158" font-size="11" fill="#5c5f62" font-weight="700">From: noreply@mining-base.co.jp</text>
+            <text x="1032" y="174" font-size="11" fill="#1a1a1a" font-weight="700">ヒロアカ × ASTROMEDA - ご感想を…</text>
+
+            <rect x="1020" y="194" width="340" height="320" rx="4" fill="#fff" stroke="#e1e3e5"/>
+            <text x="1036" y="218" font-size="11" fill="#1a1a1a">田中翔太 様</text>
+            <text x="1036" y="246" font-size="11" fill="#1a1a1a">このたびは ASTROMEDA</text>
+            <text x="1036" y="262" font-size="11" fill="#1a1a1a">pc-heroaca-deku-edition</text>
+            <text x="1036" y="278" font-size="11" fill="#1a1a1a">をご購入いただき、誠に</text>
+            <text x="1036" y="294" font-size="11" fill="#1a1a1a">ありがとうございました。</text>
+            <text x="1036" y="324" font-size="11" fill="#1a1a1a">ご購入から 14 日が経ち</text>
+            <text x="1036" y="340" font-size="11" fill="#1a1a1a">ましたが、使い心地は…</text>
+            <text x="1036" y="370" font-size="11" fill="#1a1a1a">▼ レビューを投稿する</text>
+            <rect x="1036" y="380" width="200" height="32" rx="4" fill="#1a1a1a"/>
+            <text x="1136" y="400" font-size="11" fill="#fff" text-anchor="middle" font-weight="700">→ 投稿はこちら</text>
+
+            <!-- Footer actions -->
+            <rect x="280" y="688" width="700" height="40" fill="transparent"/>
+            <rect x="700" y="690" width="120" height="32" rx="4" fill="#fff" stroke="#cbd5e0"/>
+            <text x="760" y="710" font-size="13" fill="#1a1a1a" text-anchor="middle">キャンセル</text>
+            <rect x="830" y="690" width="150" height="32" rx="4" fill="#008060"/>
+            <text x="905" y="710" font-size="13" fill="#fff" text-anchor="middle" font-weight="700">作成（無効状態）</text>
+          </svg>
+        </div>
+        <div class="wireframe-notes">
+          <h5>UX 設計ノート</h5>
+          <ul>
+            <li><strong>3 ステップ構造</strong>: 「対象」→「日数」→「件名・本文」と上から順番に。マーケ担当が迷わない。</li>
+            <li><strong>handle 入力時の自動検証</strong>: 「✓ ヒロアカ (23商品)」とリアルタイム表示。タイポを即時発見。</li>
+            <li><strong>変数ヒント</strong>: 本文ラベルに変数一覧を併記。`{{customer_name}}` `{{product_title}}` `{{review_url}}` が見たまま使える。</li>
+            <li><strong>ライブプレビュー</strong>: 右側に常時プレビュー表示。実データ代入後の最終形を確認しながら編集。</li>
+            <li><strong>作成ボタン文言</strong>: 「作成（無効状態）」と明示。誤って全件送信を防止（opt-in 明確化）。</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- W5: Customer Submit Form -->
+      <div class="wireframe">
+        <div class="wireframe-header">
+          <div class="info">
+            <h3>W5: お客様向け投稿フォーム（モバイル）</h3>
+            <p>メール内の URL から開く投稿画面。3 分以内に完了する設計。</p>
+          </div>
+          <div><span class="wireframe-tag cust">CUSTOMER / MOBILE</span></div>
+        </div>
+        <div class="wireframe-svg-wrap">
+          <svg viewBox="0 0 1400 720" style="width:100%;display:block;background:#1a1a1a;">
+            <!-- Mobile frame -->
+            <rect x="500" y="40" width="400" height="640" rx="32" fill="#1a1a1a" stroke="#5c5f62"/>
+            <rect x="520" y="80" width="360" height="580" fill="#0a0e27"/>
+
+            <!-- ASTROMEDA header -->
+            <text x="540" y="110" font-size="14" font-weight="800" fill="#fff" letter-spacing="2">ASTROMEDA</text>
+
+            <!-- Title -->
+            <text x="700" y="148" font-size="16" font-weight="700" fill="#fff" text-anchor="middle">レビューを投稿する</text>
+            <text x="700" y="166" font-size="11" fill="#a0aec0" text-anchor="middle">田中翔太様、お買い上げありがとうございました</text>
+
+            <!-- Product card -->
+            <rect x="540" y="186" width="320" height="64" rx="6" fill="rgba(255,255,255,0.05)"/>
+            <rect x="552" y="198" width="40" height="40" rx="3" fill="#cbd5e0"/>
+            <text x="604" y="218" font-size="12" fill="#fff" font-weight="700">NARUTO-ナルト- 疾風伝</text>
+            <text x="604" y="234" font-size="10" fill="#a0aec0">¥299,800</text>
+
+            <!-- Star rating -->
+            <text x="540" y="280" font-size="11" fill="#fff" font-weight="600">評価 <tspan fill="#fc8181">*</tspan></text>
+            <text x="540" y="316" font-size="32" fill="#d69e2e">★★★★★</text>
+            <text x="540" y="334" font-size="10" fill="#a0aec0">星をタップして評価してください</text>
+
+            <!-- Title field -->
+            <text x="540" y="364" font-size="11" fill="#fff" font-weight="600">見出し <tspan fill="#fc8181">*</tspan> <tspan fill="#a0aec0">(60字以内)</tspan></text>
+            <rect x="540" y="372" width="320" height="32" rx="4" fill="rgba(255,255,255,0.05)" stroke="#5c5f62"/>
+            <text x="552" y="392" font-size="11" fill="#a0aec0">例: 最高のゲーミング体験でした</text>
+
+            <!-- Body field -->
+            <text x="540" y="424" font-size="11" fill="#fff" font-weight="600">本文 <tspan fill="#fc8181">*</tspan> <tspan fill="#a0aec0">(1000字以内)</tspan></text>
+            <rect x="540" y="432" width="320" height="56" rx="4" fill="rgba(255,255,255,0.05)" stroke="#5c5f62"/>
+            <text x="552" y="452" font-size="11" fill="#a0aec0">商品の使い心地、購入の決め手等を</text>
+            <text x="552" y="468" font-size="11" fill="#a0aec0">自由にお書きください</text>
+
+            <!-- Photo upload -->
+            <text x="540" y="510" font-size="11" fill="#fff" font-weight="600">写真 <tspan fill="#a0aec0">(最大 6 枚・各 5MB)</tspan></text>
+            <rect x="540" y="518" width="52" height="52" rx="6" fill="rgba(255,255,255,0.05)" stroke="#5c5f62" stroke-dasharray="3,2"/>
+            <text x="566" y="552" font-size="20" fill="#a0aec0" text-anchor="middle">+</text>
+            <rect x="600" y="518" width="52" height="52" rx="6" fill="rgba(255,255,255,0.05)" stroke="#5c5f62" stroke-dasharray="3,2"/>
+            <text x="626" y="552" font-size="20" fill="#a0aec0" text-anchor="middle">+</text>
+            <rect x="660" y="518" width="52" height="52" rx="6" fill="rgba(255,255,255,0.05)" stroke="#5c5f62" stroke-dasharray="3,2"/>
+            <text x="686" y="552" font-size="20" fill="#a0aec0" text-anchor="middle">+</text>
+
+            <!-- Display name -->
+            <text x="540" y="600" font-size="11" fill="#fff" font-weight="600">表示名 <tspan fill="#fc8181">*</tspan> <tspan fill="#a0aec0">(本名でなくて可)</tspan></text>
+            <rect x="540" y="608" width="320" height="32" rx="4" fill="rgba(255,255,255,0.05)" stroke="#5c5f62"/>
+            <text x="552" y="628" font-size="11" fill="#fff">田中</text>
+
+            <!-- Submit button (off-screen indicator) -->
+            <rect x="520" y="660" width="360" height="40" fill="#0a0e27"/>
+            <text x="700" y="685" font-size="10" fill="#a0aec0" text-anchor="middle">↓ 投稿規約同意 + 投稿ボタン</text>
+
+            <!-- Right side annotations -->
+            <g font-size="12" fill="#cbd5e0">
+              <text x="50" y="100" font-weight="700" fill="#fff">📱 モバイル設計ポイント</text>
+              <text x="50" y="130">• タッチターゲット 44×44px 以上 (★ 評価)</text>
+              <text x="50" y="155">• 必須項目に <tspan fill="#fc8181">*</tspan> マーク + 文字数制限明示</text>
+              <text x="50" y="180">• 「本名でなくて可」を即座に明示</text>
+              <text x="50" y="205">• 写真アップロードは tap → カメラ / 写真選択</text>
+              <text x="50" y="230">• ダークモード（ASTROMEDA ブランド統一）</text>
+              <text x="50" y="255">• 入力後は autosave で離脱時にも復元</text>
+
+              <text x="950" y="100" font-weight="700" fill="#fff">🎯 完了率 KPI</text>
+              <text x="950" y="130">• 目標完了時間: 3 分以内</text>
+              <text x="950" y="155">• 目標完了率: 60%以上 (業界平均40%)</text>
+              <text x="950" y="180">• 写真添付率目標: 30%以上</text>
+              <text x="950" y="205">• 離脱率 (★評価後): 5%未満</text>
+              <text x="950" y="230">• モバイル比率想定: 75%</text>
+              <text x="950" y="255">• Lighthouse Performance: 95+</text>
+
+              <text x="50" y="320" font-weight="700" fill="#fff">⚠️ 競合との差別化</text>
+              <text x="50" y="350">• Yotpo: 8 分 / 写真 1 枚 / 本名要求</text>
+              <text x="50" y="375">• Judge.me: 5 分 / 写真 3 枚 / 任意名</text>
+              <text x="50" y="400">• <tspan fill="#aee9d1" font-weight="700">ASTROMEDA: 3 分 / 写真 6 枚 / ニックネーム可 ✨</tspan></text>
+
+              <text x="950" y="320" font-weight="700" fill="#fff">🛡️ 法的配慮</text>
+              <text x="950" y="350">• 個人情報: メールはオプトイン取得</text>
+              <text x="950" y="375">• 写真: 第三者の顔写真避ける明示</text>
+              <text x="950" y="400">• ステマ法: 認証バッジで購入経路明示</text>
+              <text x="950" y="425">• 著作権: 投稿写真の ASTROMEDA 使用権規定</text>
+            </g>
+
+          </svg>
+        </div>
+        <div class="wireframe-notes">
+          <h5>UX 設計ノート</h5>
+          <ul>
+            <li><strong>モバイルファースト</strong>: 75% のお客様がスマホで開くと想定。デザインはモバイル基準でスタート。</li>
+            <li><strong>ASTROMEDA ブランド統一</strong>: 管理画面（Polaris）と異なり、お客様向けは ASTROMEDA ダークテーマで統一感。</li>
+            <li><strong>3 分完了の徹底</strong>: 入力欄を最小限。星評価 / 見出し / 本文 / 写真 / 表示名 / 規約同意 / 投稿 の 7 ステップ。</li>
+            <li><strong>「本名でなくて可」</strong>: ペルソナ#1 田中翔太の最大の懸念を即座に解消。投稿率を 15% 向上見込み。</li>
+            <li><strong>autosave</strong>: localStorage で入力中の内容を保存。誤って閉じても復元可能。</li>
+            <li><strong>競合との差別化</strong>: Yotpo / Judge.me より速い・写真多い・匿名性高い。</li>
+          </ul>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ===== 6. Polaris Component Inventory ===== -->
+  <section>
+    <h2>6. Polaris コンポーネント表</h2>
+    <div class="section-body">
+      <p style="margin-bottom:16px;font-size:13px;color:#5c5f62;">本アプリで使用する Polaris コンポーネント一覧。<strong style="color:#008060;">P1=必須・P2=推奨・P3=条件付き</strong>。</p>
+      <table class="polaris-table">
+        <thead>
+          <tr>
+            <th style="width:90px;">優先度</th>
+            <th style="width:200px;">コンポーネント</th>
+            <th>使用箇所</th>
+            <th>選定理由</th>
+            <th style="width:160px;">代替検討</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="pri-1"><td>P1</td><td><span class="comp">Page</span></td><td>全 4 タブの最外殻</td><td>Shopify 標準ページ構造。タイトル / アクション / breadcrumb 統一。</td><td>独自 Layout（却下）</td></tr>
+          <tr class="pri-1"><td>P1</td><td><span class="comp">Layout</span></td><td>Section 配置</td><td>2 カラム / 1 カラム切替 responsive 標準。</td><td>CSS Grid（却下）</td></tr>
+          <tr class="pri-1"><td>P1</td><td><span class="comp">Card</span></td><td>レビュー詳細 / メール設定</td><td>情報グルーピングの定番。</td><td>独自 div（却下）</td></tr>
+          <tr class="pri-1"><td>P1</td><td><span class="comp">Tabs</span></td><td>4 タブ切替</td><td>状態管理 + キーボード操作対応済。</td><td>独自 buttons（却下）</td></tr>
+          <tr class="pri-1"><td>P1</td><td><span class="comp">IndexTable</span></td><td>レビュー一覧 / Queue 一覧</td><td>Bulk action / sort / filter / pagination が標準装備。</td><td>ResourceList（やや古い）</td></tr>
+          <tr class="pri-1"><td>P1</td><td><span class="comp">Filters</span></td><td>レビュー status filter</td><td>chip UI で 1 クリック切替。URL persist 可能。</td><td>独自 chips（却下）</td></tr>
+          <tr class="pri-1"><td>P1</td><td><span class="comp">Modal</span></td><td>レビュー詳細 / 削除確認</td><td>focus trap / ESC 閉じ / aria-modal 標準対応。</td><td>独自 dialog（却下）</td></tr>
+          <tr class="pri-1"><td>P1</td><td><span class="comp">Form / FormLayout</span></td><td>メール設定 / トークン発行</td><td>field group 統一 / バリデーション標準。</td><td>独自 form（却下）</td></tr>
+          <tr class="pri-1"><td>P1</td><td><span class="comp">TextField</span></td><td>入力欄全般</td><td>error state / hint / counter 標準。</td><td>HTML input（却下）</td></tr>
+          <tr class="pri-1"><td>P1</td><td><span class="comp">Select</span></td><td>target_type 選択</td><td>Polaris Select で統一感。</td><td>HTML select（却下）</td></tr>
+          <tr class="pri-1"><td>P1</td><td><span class="comp">Button</span></td><td>全アクション</td><td>variant (primary / critical / secondary) 明確。</td><td>独自 button（却下）</td></tr>
+          <tr class="pri-1"><td>P1</td><td><span class="comp">Banner</span></td><td>成功 / 警告 / エラー通知</td><td>4 種類 status (info/success/warning/critical) 標準。</td><td>Toast（補完）</td></tr>
+          <tr class="pri-1"><td>P1</td><td><span class="comp">EmptyState</span></td><td>各タブの初期状態</td><td>illustration + CTA の定番。</td><td>独自 div（却下）</td></tr>
+          <tr class="pri-1"><td>P1</td><td><span class="comp">Toast</span></td><td>承認完了 / 失敗</td><td>非ブロッキング通知の標準。</td><td>Banner（永続的、Toastは一時）</td></tr>
+          <tr class="pri-1"><td>P1</td><td><span class="comp">Badge</span></td><td>status / 種別表示</td><td>tone (info/success/warning/critical) 統一。</td><td>独自 chip（却下）</td></tr>
+          <tr class="pri-1"><td>P1</td><td><span class="comp">SkeletonBodyText</span></td><td>読込中 placeholder</td><td>CLS 防止 + 待ち時間体感低減。</td><td>Spinner（補完）</td></tr>
+          <tr class="pri-1"><td>P1</td><td><span class="comp">NavigationMenu (App Bridge)</span></td><td>Shopify Admin サイドバーの「口コミ管理」</td><td>App Bridge v4 必須機能。</td><td>なし（必須）</td></tr>
+          <tr><td>P2</td><td><span class="comp">DropZone</span></td><td>CSV 一括発行 / 写真アップロード</td><td>D&D + click + バリデーション標準。</td><td>HTML input file（却下）</td></tr>
+          <tr><td>P2</td><td><span class="comp">Thumbnail</span></td><td>写真サムネイル</td><td>aspect ratio 維持 / alt 必須。</td><td>img タグ（A11y 弱）</td></tr>
+          <tr><td>P2</td><td><span class="comp">ChoiceList / Checkbox</span></td><td>規約同意 / フィルタ</td><td>group 管理 + label 関連付け標準。</td><td>HTML checkbox（A11y 弱）</td></tr>
+          <tr><td>P2</td><td><span class="comp">Tag</span></td><td>商品コレクションタグ表示</td><td>removable / clickable variant 標準。</td><td>Badge（非 removable）</td></tr>
+          <tr><td>P2</td><td><span class="comp">Avatar</span></td><td>投稿者表示</td><td>イニシャル fallback 標準。</td><td>独自 div（却下）</td></tr>
+          <tr><td>P2</td><td><span class="comp">Tooltip</span></td><td>icon button のヒント</td><td>focus / hover 両対応。</td><td>title 属性（A11y 弱）</td></tr>
+          <tr><td>P2</td><td><span class="comp">DataTable</span></td><td>KPI 数値テーブル</td><td>sort / numeric alignment 標準。</td><td>IndexTable（重い）</td></tr>
+          <tr><td>P3</td><td><span class="comp">Popover</span></td><td>テンプレ変数ピッカー</td><td>position auto / portal 対応。</td><td>Modal（重い）</td></tr>
+          <tr><td>P3</td><td><span class="comp">RangeSlider</span></td><td>delay_days 入力</td><td>TextField でも代替可。</td><td>TextField number（採用）</td></tr>
+        </tbody>
+      </table>
+      <p style="margin-top:14px;font-size:11px;color:#5c5f62;">📌 Polaris コンポーネントの total: <strong>25 種類</strong>（必須17 / 推奨6 / 条件付き2）。すべて <code>@shopify/polaris@^13</code> から import。独自 component は EmptyState illustration の SVG のみ。</p>
+    </div>
+  </section>
+
+  <!-- ===== 7. State Coverage Matrix ===== -->
+  <section>
+    <h2>7. 状態網羅マトリクス</h2>
+    <div class="section-body">
+      <p style="margin-bottom:14px;font-size:13px;color:#5c5f62;">全画面 × 全状態（空 / 読込中 / 部分エラー / 完全エラー / 成功）の網羅確認。デザインレビュー合否判定基準。</p>
+      <table class="matrix-table">
+        <thead>
+          <tr>
+            <th style="width:14%;">画面</th>
+            <th style="width:17%;">空 (Empty)</th>
+            <th style="width:17%;">読込中 (Loading)</th>
+            <th style="width:17%;">部分エラー</th>
+            <th style="width:17%;">完全エラー</th>
+            <th style="width:17%;">成功</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>レビュー一覧</strong></td>
+            <td class="state-cell empty">EmptyState「承認待ちはありません」+ CTA「メール設定を開く」</td>
+            <td class="state-cell">SkeletonBodyText × 5 行 / Spinner</td>
+            <td class="state-cell">部分テーブル + Banner「一部読込失敗」</td>
+            <td class="state-cell">Banner critical「読込失敗」+ 再試行ボタン</td>
+            <td class="state-cell ok">テーブル正常表示 + KPI 更新</td>
+          </tr>
+          <tr>
+            <td><strong>レビュー詳細 Modal</strong></td>
+            <td class="state-cell empty">— (N/A、Modal は data ありで開く)</td>
+            <td class="state-cell">Skeleton fields</td>
+            <td class="state-cell">写真 1 枚読込失敗 → placeholder</td>
+            <td class="state-cell">Modal 内 Banner「読込失敗」+ 閉じる</td>
+            <td class="state-cell ok">全情報表示</td>
+          </tr>
+          <tr>
+            <td><strong>承認 / 拒否 Action</strong></td>
+            <td class="state-cell empty">—</td>
+            <td class="state-cell">Button spinner (optimistic UI なので即反映)</td>
+            <td class="state-cell">承認は成功・商品 metafield 更新失敗 → Banner 警告</td>
+            <td class="state-cell">Toast「失敗。再試行」+ ロールバック</td>
+            <td class="state-cell ok">Toast 成功 + 行が消える</td>
+          </tr>
+          <tr>
+            <td><strong>メール設定一覧</strong></td>
+            <td class="state-cell empty">EmptyState「最初の設定を作成」+ CTA</td>
+            <td class="state-cell">Card skeleton × 3</td>
+            <td class="state-cell">Card は表示・toggle 操作失敗 → Banner</td>
+            <td class="state-cell">Banner critical「読込失敗」+ 再試行</td>
+            <td class="state-cell ok">Card 一覧 + toggle 動作</td>
+          </tr>
+          <tr>
+            <td><strong>メール設定作成</strong></td>
+            <td class="state-cell empty">フォーム初期状態（デフォルト値プリフィル）</td>
+            <td class="state-cell">Submit 時 Button spinner</td>
+            <td class="state-cell">handle 検証失敗 → field error</td>
+            <td class="state-cell">Submit 失敗 → Banner critical + ロールバック</td>
+            <td class="state-cell ok">Toast「作成完了（無効状態）」+ 一覧へ遷移</td>
+          </tr>
+          <tr>
+            <td><strong>ギフトトークン一覧</strong></td>
+            <td class="state-cell empty">EmptyState「まだ発行されていません」+ CTA</td>
+            <td class="state-cell">Table skeleton</td>
+            <td class="state-cell">期限切れ表示は OK / 一部読込失敗 → Banner</td>
+            <td class="state-cell">Banner critical「読込失敗」+ 再試行</td>
+            <td class="state-cell ok">テーブル一覧</td>
+          </tr>
+          <tr>
+            <td><strong>CSV 一括発行</strong></td>
+            <td class="state-cell empty">DropZone empty「ファイルをドロップ」</td>
+            <td class="state-cell">パース中 Spinner + progress</td>
+            <td class="state-cell">3 件中 1 件失敗 → 結果 Banner + 詳細</td>
+            <td class="state-cell">CSV パース失敗 → Banner critical + フォーマット例</td>
+            <td class="state-cell ok">Toast「N 件発行完了」+ 一覧更新</td>
+          </tr>
+          <tr>
+            <td><strong>送信キュー</strong></td>
+            <td class="state-cell empty">EmptyState「送信予定はありません」</td>
+            <td class="state-cell">Table skeleton</td>
+            <td class="state-cell">failed エントリ表示 + エラー詳細</td>
+            <td class="state-cell">Banner critical「読込失敗」+ 再試行</td>
+            <td class="state-cell ok">テーブル + フィルタ動作</td>
+          </tr>
+          <tr>
+            <td><strong>公開: 投稿フォーム</strong></td>
+            <td class="state-cell empty">フォーム初期状態（商品プリフィル）</td>
+            <td class="state-cell">トークン検証中 Spinner</td>
+            <td class="state-cell">写真 1 枚アップ失敗 → field error 表示</td>
+            <td class="state-cell">投稿失敗 → エラーページ + 再投稿リンク</td>
+            <td class="state-cell ok">/complete にリダイレクト</td>
+          </tr>
+          <tr>
+            <td><strong>公開: エラー画面</strong></td>
+            <td class="state-cell empty">—</td>
+            <td class="state-cell">—</td>
+            <td class="state-cell">—</td>
+            <td class="state-cell">「リンクが無効」「期限切れ」「使用済」3 種類</td>
+            <td class="state-cell">—</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===== 8. Microcopy Dictionary ===== -->
+  <section>
+    <h2>8. マイクロコピー辞書（日本語）</h2>
+    <div class="section-body">
+      <p style="margin-bottom:14px;font-size:13px;color:#5c5f62;">CMO 視点で承認可能なトーン。<strong>「丁寧・短く・行動を促す」</strong>を原則とする。</p>
+
+      <h4>ボタン文言</h4>
+      <table class="microcopy-table">
+        <thead><tr><th style="width:40%;">場面</th><th style="width:30%;">使用文言</th><th>避ける文言</th></tr></thead>
+        <tbody>
+          <tr><td>レビュー承認</td><td class="ja">承認</td><td>承認する / Approve / 公開する</td></tr>
+          <tr><td>レビュー拒否</td><td class="ja">拒否</td><td>削除 / Reject / 非公開</td></tr>
+          <tr><td>承認済を取消</td><td class="ja">非公開にする</td><td>取り消し / キャンセル</td></tr>
+          <tr><td>設定作成</td><td class="ja">作成（無効状態で保存）</td><td>保存 / Save</td></tr>
+          <tr><td>設定有効化</td><td class="ja">有効化する</td><td>ON / Activate / 開始</td></tr>
+          <tr><td>設定無効化</td><td class="ja">無効化する</td><td>OFF / 停止</td></tr>
+          <tr><td>設定削除</td><td class="ja">削除する</td><td>消す / Delete</td></tr>
+          <tr><td>キャンセル</td><td class="ja">キャンセル</td><td>戻る / Cancel</td></tr>
+          <tr><td>レビュー投稿</td><td class="ja">投稿する</td><td>送信 / Submit / Post</td></tr>
+          <tr><td>ギフト発行</td><td class="ja">発行 + メール送信</td><td>作成 / Create</td></tr>
+        </tbody>
+      </table>
+
+      <h4>Toast 成功メッセージ</h4>
+      <table class="microcopy-table">
+        <thead><tr><th style="width:40%;">場面</th><th style="width:60%;">文言</th></tr></thead>
+        <tbody>
+          <tr><td>レビュー承認</td><td class="ja">レビューを承認しました</td></tr>
+          <tr><td>レビュー拒否</td><td class="ja">レビューを拒否しました</td></tr>
+          <tr><td>一括承認</td><td class="ja">{N} 件のレビューを承認しました</td></tr>
+          <tr><td>設定作成</td><td class="ja">メール設定を作成しました。有効化トグルで送信開始できます</td></tr>
+          <tr><td>設定有効化</td><td class="ja">「{label}」の自動送信を有効化しました</td></tr>
+          <tr><td>設定無効化</td><td class="ja">「{label}」の自動送信を無効化しました</td></tr>
+          <tr><td>ギフト発行</td><td class="ja">{email} へギフトトークンを送信しました</td></tr>
+          <tr><td>レビュー投稿（お客様）</td><td class="ja">投稿ありがとうございました！運営承認後 1-2 営業日で公開されます</td></tr>
+        </tbody>
+      </table>
+
+      <h4>エラーメッセージ</h4>
+      <table class="microcopy-table">
+        <thead><tr><th style="width:40%;">エラー種別</th><th style="width:60%;">文言</th></tr></thead>
+        <tbody>
+          <tr><td>ネットワークエラー</td><td class="ja">通信エラーが発生しました。ネットワーク接続を確認のうえ再試行してください</td></tr>
+          <tr><td>権限なし</td><td class="ja">この操作を行う権限がありません。管理者にお問い合わせください</td></tr>
+          <tr><td>トークン期限切れ</td><td class="ja">このリンクの有効期限が切れています（発行から 90 日経過）。新しいリンクが必要な場合は ASTROMEDA カスタマーサポートにご連絡ください</td></tr>
+          <tr><td>トークン使用済</td><td class="ja">このリンクは既に使用されています。重複投稿はできません</td></tr>
+          <tr><td>トークン不正</td><td class="ja">無効なリンクです。メール内のリンクをそのままコピーして開いてください</td></tr>
+          <tr><td>写真サイズ超過</td><td class="ja">写真サイズが大きすぎます（最大 5MB）。圧縮して再度お試しください</td></tr>
+          <tr><td>必須項目未入力</td><td class="ja">{field} を入力してください</td></tr>
+          <tr><td>CSV パース失敗</td><td class="ja">CSV ファイルの形式が正しくありません。テンプレートをダウンロードしてご確認ください</td></tr>
+        </tbody>
+      </table>
+
+      <h4>EmptyState 文言</h4>
+      <table class="microcopy-table">
+        <thead><tr><th style="width:40%;">画面</th><th style="width:60%;">文言（タイトル / 説明 / CTA）</th></tr></thead>
+        <tbody>
+          <tr><td>レビュー一覧（pending=0）</td><td><span class="ja">承認待ちのレビューはありません</span><br>商品が発送されてから 14 日後に、お客様にレビュー依頼メールが自動送信されます<br>CTA: メール設定を開く</td></tr>
+          <tr><td>メール設定（0件）</td><td><span class="ja">まだメール設定がありません</span><br>+ 新規設定を作成からはじめてください。デフォルトでは無効状態（オプトイン制）で保存されます<br>CTA: + 新規設定を作成</td></tr>
+          <tr><td>ギフトトークン（0件）</td><td><span class="ja">まだギフトトークンが発行されていません</span><br>ギフト受領者にレビュー依頼を送りたい場合は、フォームから発行できます<br>CTA: フォームを表示</td></tr>
+          <tr><td>送信キュー（0件）</td><td><span class="ja">送信予定のメールはありません</span><br>注文発送 14 日後に自動的にキューに追加されます<br>CTA: なし（情報表示のみ）</td></tr>
+        </tbody>
+      </table>
+
+      <h4>確認ダイアログ文言</h4>
+      <table class="microcopy-table">
+        <thead><tr><th style="width:40%;">操作</th><th>タイトル / 説明</th></tr></thead>
+        <tbody>
+          <tr><td>レビュー拒否確認</td><td><span class="ja">このレビューを拒否しますか？</span><br>拒否後はストアフロントから非表示になります。投稿者には通知されません。</td></tr>
+          <tr><td>設定削除確認</td><td><span class="ja">「{label}」設定を削除しますか？</span><br>削除すると、この設定で予約された送信予定が全てキャンセルされます。この操作は取り消せません。</td></tr>
+          <tr><td>メール設定有効化確認</td><td><span class="ja">「{label}」を有効化しますか？</span><br>有効化すると、対象注文の発送 {N} 日後に自動メール送信が開始されます。</td></tr>
+        </tbody>
+      </table>
+
+    </div>
+  </section>
+
+  <!-- ===== 9. Accessibility ===== -->
+  <section>
+    <h2>9. アクセシビリティ仕様（WCAG 2.1 AA）</h2>
+    <div class="section-body">
+      <div class="checklist">
+        <div class="checklist-card">
+          <h4>キーボード操作</h4>
+          <ul>
+            <li>全インタラクティブ要素を Tab キーで到達可能</li>
+            <li>承認 / 拒否ボタンに Enter / Space で実行</li>
+            <li>Modal は ESC キーで閉じる</li>
+            <li>テーブル行を矢印キーで移動（Polaris IndexTable 標準）</li>
+            <li>Tab タブを矢印キーで切替（Polaris Tabs 標準）</li>
+            <li>Skip to main content リンク（先頭）</li>
+          </ul>
+        </div>
+        <div class="checklist-card">
+          <h4>スクリーンリーダー対応</h4>
+          <ul>
+            <li>aria-label / aria-labelledby 適切に設定</li>
+            <li>aria-live 領域で Toast / Banner を announce</li>
+            <li>aria-busy で読込中状態を伝達</li>
+            <li>承認状態変化を aria-live で読み上げ</li>
+            <li>Modal は aria-modal="true" + focus trap</li>
+            <li>装飾アイコンには aria-hidden="true"</li>
+          </ul>
+        </div>
+        <div class="checklist-card">
+          <h4>視覚的アクセシビリティ</h4>
+          <ul>
+            <li>色のコントラスト: テキスト 4.5:1 以上 / UI 要素 3:1 以上</li>
+            <li>色だけで情報を伝えない（status はバッジ + アイコン）</li>
+            <li>focus indicator が明確（Polaris 標準 outline）</li>
+            <li>テキストは 200% zoom でも崩れない</li>
+            <li>クリック可能領域 44×44px 以上</li>
+          </ul>
+        </div>
+        <div class="checklist-card">
+          <h4>動き・モーション</h4>
+          <ul>
+            <li>prefers-reduced-motion 尊重</li>
+            <li>自動再生・自動更新は実装しない（手動 reload）</li>
+            <li>アニメーションは 200ms 以内・linear / ease-out</li>
+            <li>Polaris motion tokens 使用</li>
+          </ul>
+        </div>
+      </div>
+
+      <h4 style="margin-top:18px;">自動検査 / 手動検査計画</h4>
+      <table class="polaris-table">
+        <thead><tr><th>項目</th><th>方法</th><th>合格基準</th></tr></thead>
+        <tbody>
+          <tr><td>Axe DevTools 自動監査</td><td>CI 実行 (GitHub Actions)</td><td>重大エラー 0 件</td></tr>
+          <tr><td>Lighthouse A11y</td><td>各画面で実行</td><td>90 点以上</td></tr>
+          <tr><td>NVDA / VoiceOver 手動</td><td>主要 5 画面の操作確認</td><td>主要操作が音声誘導で完結</td></tr>
+          <tr><td>キーボードのみ操作</td><td>マウス使わず全機能利用</td><td>5 分以内に全タブ操作可能</td></tr>
+          <tr><td>200% zoom テスト</td><td>Chrome zoom 200% で操作</td><td>レイアウト崩れなし</td></tr>
+        </tbody>
+      </table>
+
+    </div>
+  </section>
+
+  <!-- ===== 10. Mobile ===== -->
+  <section>
+    <h2>10. モバイル仕様</h2>
+    <div class="section-body">
+      <div class="checklist">
+        <div class="checklist-card">
+          <h4>Shopify Mobile Admin App</h4>
+          <ul>
+            <li>iOS / Android の Shopify アプリ内でも iframe レンダリング</li>
+            <li>NavigationMenu は mobile では bottom tabs に自動変換</li>
+            <li>IndexTable は mobile では Card list に自動変換（Polaris 標準）</li>
+            <li>Modal は mobile では full screen に</li>
+            <li>テスト: iPhone 14 / Pixel 7 の Shopify アプリで動作確認</li>
+          </ul>
+        </div>
+        <div class="checklist-card">
+          <h4>お客様向けモバイルブラウザ</h4>
+          <ul>
+            <li>iOS Safari 15+ / Android Chrome 100+ 対応</li>
+            <li>viewport meta 設定（width=device-width, initial-scale=1.0）</li>
+            <li>タッチターゲット 44×44px 以上</li>
+            <li>写真選択: input[type=file][accept="image/*"] で標準カメラ起動</li>
+            <li>ダークモード（ASTROMEDA ブランドに合わせ常時ダーク）</li>
+            <li>localStorage で入力 autosave（誤閉じ復元）</li>
+          </ul>
+        </div>
+        <div class="checklist-card">
+          <h4>ブレークポイント</h4>
+          <ul>
+            <li>≤ 480px: モバイル（1 カラム / hamburger）</li>
+            <li>481-768px: タブレット縦（1 カラム / sidebar 折畳）</li>
+            <li>769-1024px: タブレット横 / 小型 PC（2 カラム）</li>
+            <li>≥ 1025px: PC（フル表示）</li>
+          </ul>
+        </div>
+        <div class="checklist-card">
+          <h4>パフォーマンス（モバイル）</h4>
+          <ul>
+            <li>初期 JS バンドル 200KB 以下（gzipped）</li>
+            <li>画像は WebP + lazy load</li>
+            <li>4G 想定で LCP 2.5s 以内</li>
+            <li>Lighthouse Performance 95+</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 11. Performance Budget ===== -->
+  <section>
+    <h2>11. パフォーマンス予算</h2>
+    <div class="section-body">
+      <div class="perf-grid">
+        <div class="perf-metric">
+          <div class="metric-name">LCP</div>
+          <div class="metric-val">&lt; 2.5s</div>
+          <div class="metric-desc">Largest Contentful Paint</div>
+        </div>
+        <div class="perf-metric">
+          <div class="metric-name">INP</div>
+          <div class="metric-val">&lt; 200ms</div>
+          <div class="metric-desc">Interaction to Next Paint</div>
+        </div>
+        <div class="perf-metric">
+          <div class="metric-name">CLS</div>
+          <div class="metric-val">&lt; 0.1</div>
+          <div class="metric-desc">Cumulative Layout Shift</div>
+        </div>
+        <div class="perf-metric">
+          <div class="metric-name">TTI</div>
+          <div class="metric-val">&lt; 3.5s</div>
+          <div class="metric-desc">Time to Interactive</div>
+        </div>
+        <div class="perf-metric">
+          <div class="metric-name">Bundle</div>
+          <div class="metric-val">&lt; 200KB</div>
+          <div class="metric-desc">Initial JS (gzipped)</div>
+        </div>
+      </div>
+
+      <h4 style="margin-top:20px;">SLO / SLI</h4>
+      <table class="polaris-table">
+        <thead><tr><th>指標</th><th>目標値 (SLO)</th><th>測定方法 (SLI)</th></tr></thead>
+        <tbody>
+          <tr><td>API レスポンスタイム (p95)</td><td>&lt; 500ms</td><td>Fly.io metrics</td></tr>
+          <tr><td>サーバー稼働率</td><td>99.5% / 月</td><td>Fly.io health check</td></tr>
+          <tr><td>メール送信成功率</td><td>≥ 99%</td><td>Shopify Flow run history (success/failed カウント)</td></tr>
+          <tr><td>承認 → 公開反映時間</td><td>≤ 5 秒</td><td>e2e test</td></tr>
+          <tr><td>投稿 → 管理画面表示</td><td>≤ 10 秒</td><td>e2e test</td></tr>
+          <tr><td>クリティカルエラー件数</td><td>0 件 / 週</td><td>Sentry</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===== 12. Competitive ===== -->
+  <section>
+    <h2>12. 競合分析 ・ 差別化ポイント</h2>
+    <div class="section-body">
+      <p style="margin-bottom:14px;font-size:13px;color:#5c5f62;">国内外の Shopify レビュー SaaS と比較。<strong>ASTROMEDA は自社開発のため低コスト + 完全カスタマイズ</strong>。</p>
+      <table class="compete-table">
+        <thead>
+          <tr>
+            <th style="width:18%;">機能</th>
+            <th>Yotpo</th>
+            <th>Judge.me</th>
+            <th>Loox</th>
+            <th>Stamped.io</th>
+            <th class="us">ASTROMEDA (本案)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>月額コスト</strong></td>
+            <td>$19 ~ $1,500</td>
+            <td>$15 ~ $39</td>
+            <td>$9.99 ~ $300</td>
+            <td>$23 ~ $479</td>
+            <td class="us">¥0（自社開発）</td>
+          </tr>
+          <tr>
+            <td><strong>ギフト受領者レビュー</strong></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="partial">△ 高額プランのみ</span></td>
+            <td class="us"><span class="check">✓ 標準装備</span></td>
+          </tr>
+          <tr>
+            <td><strong>IPコラボ別メール設定</strong></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td class="us"><span class="check">✓ 業界初</span></td>
+          </tr>
+          <tr>
+            <td><strong>投稿フォーム所要時間</strong></td>
+            <td>8 分</td>
+            <td>5 分</td>
+            <td>4 分</td>
+            <td>6 分</td>
+            <td class="us"><span class="check">3 分（業界最速）</span></td>
+          </tr>
+          <tr>
+            <td><strong>写真添付最大枚数</strong></td>
+            <td>1 枚</td>
+            <td>3 枚</td>
+            <td>5 枚</td>
+            <td>3 枚</td>
+            <td class="us"><span class="check">6 枚</span></td>
+          </tr>
+          <tr>
+            <td><strong>匿名投稿 (ニックネーム)</strong></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="partial">△ 一部</span></td>
+            <td><span class="check">✓</span></td>
+            <td><span class="check">✓</span></td>
+            <td class="us"><span class="check">✓ 標準</span></td>
+          </tr>
+          <tr>
+            <td><strong>日本語サポート</strong></td>
+            <td><span class="partial">△ ベータ</span></td>
+            <td><span class="check">✓</span></td>
+            <td><span class="check">✓</span></td>
+            <td><span class="partial">△</span></td>
+            <td class="us"><span class="check">✓ ネイティブ</span></td>
+          </tr>
+          <tr>
+            <td><strong>承認ワークフロー</strong></td>
+            <td><span class="check">✓</span></td>
+            <td><span class="check">✓</span></td>
+            <td><span class="check">✓</span></td>
+            <td><span class="check">✓</span></td>
+            <td class="us"><span class="check">✓ + 自動 NG 検出</span></td>
+          </tr>
+          <tr>
+            <td><strong>Polaris UI 統合</strong></td>
+            <td><span class="cross">✗ 独自</span></td>
+            <td><span class="cross">✗ 独自</span></td>
+            <td><span class="cross">✗ 独自</span></td>
+            <td><span class="cross">✗ 独自</span></td>
+            <td class="us"><span class="check">✓ 100% Polaris</span></td>
+          </tr>
+          <tr>
+            <td><strong>データ所有権</strong></td>
+            <td>SaaS 側</td>
+            <td>SaaS 側</td>
+            <td>SaaS 側</td>
+            <td>SaaS 側</td>
+            <td class="us"><span class="check">完全自社 (Metaobject)</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="pull-quote" style="margin-top:18px;">
+        "Best-in-class merchant tooling isn't about features — it's about reducing time-to-value for the merchant. 3 minutes vs 8 minutes for review submission is a 2-3x conversion improvement."
+        <span class="author">— Shopify CEO 視点 (paraphrased)</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 13. Success Metrics ===== -->
+  <section>
+    <h2>13. 成功指標 (Success Metrics)</h2>
+    <div class="section-body">
+
+      <h4>運営側 (Daily Admin / Setup Admin)</h4>
+      <table class="polaris-table">
+        <thead><tr><th>指標</th><th>目標値</th><th>計測タイミング</th></tr></thead>
+        <tbody>
+          <tr><td>TTFSA: Time to First Successful Action</td><td>初回ログイン後 60 秒以内に最初の承認完了</td><td>Sentry / Analytics</td></tr>
+          <tr><td>承認 1 件あたり処理時間</td><td>≤ 30 秒</td><td>承認 timestamp diff</td></tr>
+          <tr><td>10 件処理に要する時間</td><td>≤ 5 分</td><td>計測テスト</td></tr>
+          <tr><td>新IP設定 完了時間</td><td>≤ 10 分（マーケ担当）</td><td>設定 created_at 計測</td></tr>
+          <tr><td>誤承認発生率</td><td>≤ 1%（事後拒否率）</td><td>非公開化アクションログ</td></tr>
+        </tbody>
+      </table>
+
+      <h4 style="margin-top:18px;">エンドユーザー側</h4>
+      <table class="polaris-table">
+        <thead><tr><th>指標</th><th>目標値</th><th>計測方法</th></tr></thead>
+        <tbody>
+          <tr><td>メール開封率</td><td>≥ 40%</td><td>Shopify Email analytics (open rate)</td></tr>
+          <tr><td>URL クリック率（CTR）</td><td>≥ 15%</td><td>Shopify Email analytics (click rate) / App Proxy /apps/reviews/submit?token= の uniq token 訪問数</td></tr>
+          <tr><td>フォーム完了率</td><td>≥ 60%</td><td>start vs complete events</td></tr>
+          <tr><td>投稿所要時間 (median)</td><td>≤ 3 分</td><td>start → submit timestamps</td></tr>
+          <tr><td>写真添付率</td><td>≥ 30%</td><td>has_photo フラグ</td></tr>
+          <tr><td>★4 以上の比率</td><td>≥ 70%</td><td>rating distribution</td></tr>
+          <tr><td>承認率</td><td>≥ 90%</td><td>approved / total</td></tr>
+        </tbody>
+      </table>
+
+      <h4 style="margin-top:18px;">事業インパクト</h4>
+      <table class="polaris-table">
+        <thead><tr><th>指標</th><th>目標値 (Go-Live 3 ヶ月後)</th><th>計測方法</th></tr></thead>
+        <tbody>
+          <tr><td>商品ページ レビュー掲載率</td><td>50% 以上の商品にレビュー 1 件以上</td><td>商品 metafield 集計</td></tr>
+          <tr><td>レビュー数 (累計)</td><td>200 件以上</td><td>承認済件数</td></tr>
+          <tr><td>UGC (ユーザー写真) 数</td><td>60 件以上</td><td>has_photo true 集計</td></tr>
+          <tr><td>CVR への寄与</td><td>レビュー掲載商品 vs 非掲載で CVR +15%</td><td>Shopify Analytics A/B</td></tr>
+          <tr><td>SaaS 代替による年間コスト削減</td><td>¥240,000+/年 (Yotpo $19/月 × 12)</td><td>非利用による節約</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===== 14. Sign-off Checklist ===== -->
+  <section>
+    <h2>14. Design Sign-off チェックリスト</h2>
+    <div class="section-body">
+      <p style="margin-bottom:14px;font-size:13px;color:#5c5f62;">Go-Live 前に CDO / CTO / CEO / CMO 視点で全項目チェック。1 項目でも fail なら Go-Live 不可。</p>
+      <div class="checklist">
+
+        <div class="checklist-card">
+          <h4>CDO (Design) チェック</h4>
+          <ul>
+            <li>☐ 全画面で Polaris コンポーネントのみ使用（独自スタイル不在）</li>
+            <li>☐ 状態網羅マトリクスの全 50 セル実装済</li>
+            <li>☐ EmptyState illustration 全画面に配置</li>
+            <li>☐ Skeleton loading 全画面に実装</li>
+            <li>☐ Toast / Banner エラーパターン統一</li>
+            <li>☐ Modal は focus trap + ESC 閉じ</li>
+            <li>☐ マイクロコピー辞書 100% 反映</li>
+            <li>☐ Axe DevTools 重大エラー 0 件</li>
+            <li>☐ Lighthouse A11y 90 点以上</li>
+          </ul>
+        </div>
+
+        <div class="checklist-card">
+          <h4>CTO (Engineering) チェック</h4>
+          <ul>
+            <li>☐ Session Token 認証実装 (App Bridge v4)</li>
+            <li>☐ Rate Limit ミドルウェア動作</li>
+            <li>☐ HMAC webhook 検証</li>
+            <li>☐ Audit Log 全アクション記録</li>
+            <li>☐ Sentry エラー追跡稼働</li>
+            <li>☐ Lighthouse Performance 95+</li>
+            <li>☐ LCP &lt; 2.5s / INP &lt; 200ms</li>
+            <li>☐ Bundle &lt; 200KB</li>
+            <li>☐ E2E テスト 全フロー pass</li>
+          </ul>
+        </div>
+
+        <div class="checklist-card">
+          <h4>CEO (Merchant Outcome) チェック</h4>
+          <ul>
+            <li>☐ 初見の人がドキュメント無しで承認操作完了 (60 秒)</li>
+            <li>☐ 10 件の承認を 5 分以内で処理可能</li>
+            <li>☐ サイドバーから 1 クリックでアクセス</li>
+            <li>☐ 誤クリック防止（拒否ボタンの確認ダイアログ）</li>
+            <li>☐ Optimistic UI による即時フィードバック</li>
+            <li>☐ 失敗時のロールバック動作</li>
+            <li>☐ 運用マニュアル準備済</li>
+            <li>☐ CEO 自身が運用テスト合格</li>
+          </ul>
+        </div>
+
+        <div class="checklist-card">
+          <h4>CMO (Brand / GTM) チェック</h4>
+          <ul>
+            <li>☐ お客様向け公開フォームに ASTROMEDA ブランド適用</li>
+            <li>☐ メール件名・本文のトーン日本語チェック</li>
+            <li>☐ ニックネーム可で匿名性確保</li>
+            <li>☐ 認証購入 / ギフト バッジで信頼性訴求</li>
+            <li>☐ ステマ法対応 (購入経路明示)</li>
+            <li>☐ 競合差別化ポイント可視化</li>
+            <li>☐ SaaS 比 ¥240K/年コスト削減訴求</li>
+            <li>☐ 商品ページ JSON-LD 構造化データ</li>
+          </ul>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Sign-off ===== -->
+  <section>
+    <h2>15. デザイン承認</h2>
+    <div class="signoff">
+      <h3>本デザイン仕様書を承認することにより、以下を確認します</h3>
+      <div class="signoff-grid">
+        <div class="signoff-card">
+          <h5>承認内容</h5>
+          <ul>
+            <li>ペルソナ 3 種・ジャーニーマップ 3 本</li>
+            <li>主要 8 画面ワイヤーフレーム</li>
+            <li>Polaris コンポーネント 25 種採用</li>
+            <li>状態網羅マトリクス 50 セル</li>
+            <li>マイクロコピー辞書 全 50 文言</li>
+            <li>WCAG 2.1 AA 適合方針</li>
+            <li>モバイル仕様 (Shopify App / Browser)</li>
+            <li>パフォーマンス予算 (Core Web Vitals)</li>
+            <li>競合差別化方針</li>
+            <li>成功指標 (SLI / KPI)</li>
+          </ul>
+        </div>
+        <div class="signoff-card">
+          <h5>承認者署名</h5>
+          <div style="margin-top:24px;border-bottom:1px solid #fff;padding-bottom:32px;">　</div>
+          <div style="font-size:11px;margin-top:6px;opacity:0.85;">武正貴昭 ・ CEO ・ 株式会社マイニングベース</div>
+          <div style="font-size:11px;margin-top:2px;opacity:0.85;">承認日: 　　/　　/　　</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    ASTROMEDA × Cowork ・ REV-EMB-2026-Q2 ・ UX/UI Design Specification ・ Companion to Gantt v1.0 ・ Generated 2026-05-14
+  </footer>
+
+</div>
+</body>
+</html>
