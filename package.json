@@ -1,7 +1,7 @@
 {
   "name": "astromeda-reviews-app",
   "version": "0.1.0",
-  "description": "ASTROMEDA 口コミ機能 - Shopify Admin Embedded App (REV-EMB-2026-Q2)",
+  "description": "ASTROMEDA review system - Shopify Admin Embedded App (REV-EMB-2026-Q2)",
   "private": true,
   "scripts": {
     "build": "remix vite:build",
@@ -72,4 +72,9 @@
   },
   "overrides": {
     "@graphql-tools/url-loader": "8.0.16",
-    "@graphql-codegen/
+    "@graphql-codegen/client-preset": "4.7.0",
+    "@graphql-codegen/typescript-operations": "4.5.0",
+    "minimatch": "9.0.5",
+    "vite": "^6.2.2"
+  }
+}
