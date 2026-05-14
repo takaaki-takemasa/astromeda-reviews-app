@@ -11,10 +11,11 @@ import { appendAuditLogSafe } from "../lib/audit-log";
 import {
   IP_COLLABS, ASTROMEDA_COLORS, ASTROMEDA_GPUS, PRODUCT_GROUPS,
   resolveTarget, inferSelection, detectProductGroup,
-  type HierarchicalSelection, type TargetRoot,
+  type HierarchicalSelection, type TargetRoot, type MetaobjectTargetType,
 } from "../lib/astromeda-taxonomy";
 
-type TargetType = "collection" | "product_tag" | "product" | "category" | "all";
+// Shopify Metaobject astromeda_review_email_config の target_type 単一選択列挙体
+type TargetType = MetaobjectTargetType;
 
 interface EmailConfig {
   id: string;
@@ -127,7 +128,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const configs: EmailConfig[] = (cfgJson.data?.metaobjects?.edges ?? []).map((e) => ({
     id: e.node.id,
-    target_type: (extractField(e.node, "target_type") as TargetType) || "all",
+    target_type: (extractField(e.node, "target_type") as TargetType) || "global",
     target_handle: extractField(e.node, "target_handle"),
     target_label: extractField(e.node, "target_label"),
     enabled: extractField(e.node, "enabled") === "true",
@@ -622,9 +623,4 @@ export default function EmailTab() {
                 </BlockStack>
               </Box>
             </BlockStack>
-          </InlineGrid>
-        </Modal.Section>
-      </Modal>
-    </Page>
-  );
-}
+    

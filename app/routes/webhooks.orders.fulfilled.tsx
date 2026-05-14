@@ -76,17 +76,40 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const productTags = order.line_items?.flatMap((li) => li.product?.tags ?? []) ?? [];
   const allTags = new Set([...orderTags, ...productTags]);
 
+  // target_type は Metaobject enum で global / ip_collection / product_collection の 3 値のみ。
+  // product_collection の target_handle 接頭辞でさらに分類:
+  //   "product:xxx"          → 個別商品
+  //   "ip:xxx+group:yyy"     → IP × 製品群
+  //   "color:xxx[+gpu:yyy]"  → アストロメダ色 (× GPU)
+  //   "gpu:xxx"              → アストロメダ GPU 単独
   let matched: typeof configs[number] | undefined;
-  // Priority 1: product_tag match
+
+  // Priority 1: product_collection - product tag composite key match
   matched = configs.find((c) => {
     if (f(c, "enabled") !== "true") return false;
-    if (f(c, "target_type") !== "product_tag") return false;
-    return allTags.has(f(c, "target_handle"));
+    if (f(c, "target_type") !== "product_collection") return false;
+    const handle = f(c, "target_handle");
+    // 個別商品: line_items から product handle で照合 (今は product handle が無いので skip)
+    // タグ系: ip / color / gpu のいずれかが allTags に含まれていれば match
+    if (handle.startsWith("ip:") || handle.startsWith("color:") || handle.startsWith("gpu:")) {
+      const parts = handle.split("+").map((p) => p.split(":").pop() ?? p);
+      return parts.every((p) => allTags.has(p));
+    }
+    return false;
   });
-  // Priority 2: collection match (we don't have collection info here, defer)
-  // Priority 3: all fallback
+
+  // Priority 2: ip_collection - product tag に IP handle が含まれているか
   if (!matched) {
-    matched = configs.find((c) => f(c, "enabled") === "true" && f(c, "target_type") === "all");
+    matched = configs.find((c) => {
+      if (f(c, "enabled") !== "true") return false;
+      if (f(c, "target_type") !== "ip_collection") return false;
+      return allTags.has(f(c, "target_handle"));
+    });
+  }
+
+  // Priority 3: global fallback (全体配信)
+  if (!matched) {
+    matched = configs.find((c) => f(c, "enabled") === "true" && f(c, "target_type") === "global");
   }
 
   if (!matched) {
@@ -105,35 +128,4 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     { key: "order_id", value: String(order.id) },
     { key: "email", value: order.email },
     { key: "customer_name", value: customerName },
-    { key: "config_id", value: matched.id },
-    { key: "fulfilled_at", value: fulfilledAt },
-    { key: "scheduled_at", value: scheduledAt },
-    { key: "status", value: "scheduled" },
-  ];
-
-  const createRes = await admin.graphql(CREATE_QUEUE_MUTATION, {
-    variables: { metaobject: { type: "astromeda_review_email_queue", fields } },
-  });
-  const createJson = (await createRes.json()) as { data?: { metaobjectCreate?: { metaobject?: { id: string }; userErrors: Array<{ field: string[]; message: string }> } } };
-  const errs = createJson.data?.metaobjectCreate?.userErrors ?? [];
-  const newId = createJson.data?.metaobjectCreate?.metaobject?.id;
-
-  if (errs.length > 0) {
-    // eslint-disable-next-line no-console
-    console.error("[webhook] queue insertion failed", errs);
-  }
-
-  if (newId) {
-    await appendAuditLogSafe({
-      admin,
-      actor: `webhook:${shop}`,
-      action: "email.send", // queued for sending
-      resource_id: newId,
-      resource_type: "astromeda_review_email_queue",
-      request,
-      metadata: { order_id: order.id, config_id: matched.id, scheduled_at: scheduledAt },
-    });
-  }
-
-  return new Response();
-};
+    { k
