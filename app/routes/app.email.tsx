@@ -11,11 +11,10 @@ import { appendAuditLogSafe } from "../lib/audit-log";
 import {
   IP_COLLABS, ASTROMEDA_COLORS, ASTROMEDA_GPUS, PRODUCT_GROUPS,
   resolveTarget, inferSelection, detectProductGroup,
-  type HierarchicalSelection, type TargetRoot, type MetaobjectTargetType,
+  type HierarchicalSelection, type TargetRoot,
 } from "../lib/astromeda-taxonomy";
 
-// Shopify Metaobject astromeda_review_email_config の target_type 単一選択列挙体
-type TargetType = MetaobjectTargetType;
+type TargetType = "collection" | "product_tag" | "product" | "category" | "all";
 
 interface EmailConfig {
   id: string;
@@ -44,10 +43,9 @@ const LIST_QUERY = `#graphql
   }
 `;
 
-// 対象コレクション (IPコラボ 23 + 8 色 + gaming-pc) ごとに製品をまとめて取得する。
-// status:active + first:250 では 1417 商品中、日本語タイトルの IP 商品が
+// 対象コレクション (IPコラボ + 8色 + gaming-pc) ごとに製品をまとめて取得する。
+// status:active + first:250 では 1417 商品中の IP 商品 (日本語タイトル) が
 // alphabetical sort で 250 番以降に押し出されて 0 件になっていた根本バグの修正。
-// alias 付き collectionByHandle を 1 リクエストにまとめれば 1 往復で完結する。
 function buildCollectionsProductsQuery(): string {
   const ipAliases = IP_COLLABS.map((ip, i) => {
     const handle = ip.productCollectionHandle || ip.handle;
@@ -56,8 +54,6 @@ function buildCollectionsProductsQuery(): string {
   const colorAliases = ASTROMEDA_COLORS.map((c, i) =>
     `color${i}: collectionByHandle(handle: "${c.slug}") { handle title products(first: 100) { edges { node { id title handle tags } } } }`
   ).join("\n  ");
-  // gaming-pc は 1600 商品ある集約 collection なので、IP/color に含まれない PC のみを 50 件抜粋
-  // (color 単体絞り込みすれば実際の表示には color collection 側の 24 商品 × 8 = 192 で十分)
   const gamingPc = `gamingPc: collectionByHandle(handle: "gaming-pc") { handle title products(first: 50, sortKey: BEST_SELLING) { edges { node { id title handle tags } } } }`;
   return `#graphql\nquery AllRelevantCollections {\n  ${ipAliases}\n  ${colorAliases}\n  ${gamingPc}\n}`;
 }
@@ -130,7 +126,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const configs: EmailConfig[] = (cfgJson.data?.metaobjects?.edges ?? []).map((e) => ({
     id: e.node.id,
-    target_type: (extractField(e.node, "target_type") as TargetType) || "global",
+    target_type: (extractField(e.node, "target_type") as TargetType) || "all",
     target_handle: extractField(e.node, "target_handle"),
     target_label: extractField(e.node, "target_label"),
     enabled: extractField(e.node, "enabled") === "true",
@@ -155,13 +151,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         if (existing) {
           if (!existing.collectionHandles.includes(coll.handle)) existing.collectionHandles.push(coll.handle);
         } else {
-          productMap.set(p.handle, {
-            id: p.id,
-            title: p.title,
-            handle: p.handle,
-            tags: p.tags ?? [],
-            collectionHandles: [coll.handle],
-          });
+          productMap.set(p.handle, { id: p.id, title: p.title, handle: p.handle, tags: p.tags ?? [], collectionHandles: [coll.handle] });
         }
       }
     }
@@ -619,6 +609,7 @@ export default function EmailTab() {
                   <Text as="h2" variant="headingMd">{previewSubject || "(件名未入力)"}</Text>
                 </Box>
                 <Divider />
+                <Box padding="0">
                   <div style={{ background: "#0d9488", padding: 18, textAlign: "center" }}>
                     <span style={{ color: "#fff", fontSize: 18, fontWeight: 700, letterSpacing: 2 }}>ASTROMEDA</span>
                   </div>
