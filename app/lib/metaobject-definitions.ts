@@ -52,10 +52,7 @@ export type ReviewStatus = "pending" | "approved" | "rejected";
 export type ReviewSourceType = "verified_purchase" | "gift" | "manual";
 export type ReviewTokenType = "purchase" | "gift";
 export type EmailQueueStatus = "queued" | "scheduled" | "sent" | "failed";
-// Metaobject astromeda_review_email_config の target_type は single_choice enum で
-// "global" / "ip_collection" / "product_collection" の 3 値のみ許容。
-// 詳細分類は target_handle の接頭辞 (product: / ip: / color: / gpu:) で encode。
-export type EmailConfigTargetType = "global" | "ip_collection" | "product_collection";
+export type EmailConfigTargetType = "collection" | "product_tag" | "category" | "all";
 export type AuditAction =
   | "review.approve"
   | "review.reject"
@@ -82,4 +79,9 @@ export interface AstromedaAuditLogFields {
 }
 
 /**
- 
+ * Append-only 監査ログを書き込むためのヘルパー型。
+ * 実装は app/lib/audit-log.ts (Phase C で作成) で行う。
+ */
+export interface AppendAuditLog {
+  (fields: AstromedaAuditLogFields): Promise<{ id: string } | { error: string }>;
+}

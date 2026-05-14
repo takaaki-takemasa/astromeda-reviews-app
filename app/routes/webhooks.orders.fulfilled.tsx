@@ -56,6 +56,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   console.info(`[webhook] ${topic} received from ${shop}`);
 
   if (!admin) {
+    // For uninstalled stores authenticate.webhook may not have admin context.
     return new Response();
   }
 
@@ -66,6 +67,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return new Response();
   }
 
+  // 1) Find matching email config based on product tags (most specific first), fallback to "all".
   const configsRes = await admin.graphql(FIND_CONFIG_QUERY);
   const configsJson = (await configsRes.json()) as { data?: { metaobjects?: { edges: Array<{ node: { id: string; fields: Array<{ key: string; value: string }> } }> } } };
   const configs = configsJson.data?.metaobjects?.edges?.map((e) => e.node) ?? [];
@@ -74,56 +76,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const productTags = order.line_items?.flatMap((li) => li.product?.tags ?? []) ?? [];
   const allTags = new Set([...orderTags, ...productTags]);
 
-  // target_type は Metaobject enum で global / ip_collection / product_collection の 3 値が
-  // 想定。後方互換のため legacy 値 (collection / product_tag / product / all) も認識する。
   let matched: typeof configs[number] | undefined;
-
-  // Priority 1: product_collection - 接頭辞付き複合キー (color:/gpu:/ip:/product:)
+  // Priority 1: product_tag match
   matched = configs.find((c) => {
     if (f(c, "enabled") !== "true") return false;
-    if (f(c, "target_type") !== "product_collection") return false;
-    const handle = f(c, "target_handle");
-    if (handle.startsWith("ip:") || handle.startsWith("color:") || handle.startsWith("gpu:")) {
-      const parts = handle.split("+").map((p) => p.split(":").pop() ?? p);
-      return parts.every((p) => allTags.has(p));
-    }
-    return false;
+    if (f(c, "target_type") !== "product_tag") return false;
+    return allTags.has(f(c, "target_handle"));
   });
-
-  // Priority 1b legacy: product_tag (旧フォーマット)
+  // Priority 2: collection match (we don't have collection info here, defer)
+  // Priority 3: all fallback
   if (!matched) {
-    matched = configs.find((c) => {
-      if (f(c, "enabled") !== "true") return false;
-      if (f(c, "target_type") !== "product_tag") return false;
-      return allTags.has(f(c, "target_handle"));
-    });
-  }
-
-  // Priority 2: ip_collection
-  if (!matched) {
-    matched = configs.find((c) => {
-      if (f(c, "enabled") !== "true") return false;
-      if (f(c, "target_type") !== "ip_collection") return false;
-      return allTags.has(f(c, "target_handle"));
-    });
-  }
-
-  // Priority 2b legacy: collection (旧フォーマット)
-  if (!matched) {
-    matched = configs.find((c) => {
-      if (f(c, "enabled") !== "true") return false;
-      if (f(c, "target_type") !== "collection") return false;
-      return allTags.has(f(c, "target_handle"));
-    });
-  }
-
-  // Priority 3: global / all (全体配信フォールバック)
-  if (!matched) {
-    matched = configs.find((c) => {
-      if (f(c, "enabled") !== "true") return false;
-      const t = f(c, "target_type");
-      return t === "global" || t === "all";
-    });
+    matched = configs.find((c) => f(c, "enabled") === "true" && f(c, "target_type") === "all");
   }
 
   if (!matched) {
@@ -164,7 +127,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     await appendAuditLogSafe({
       admin,
       actor: `webhook:${shop}`,
-      action: "email.send",
+      action: "email.send", // queued for sending
       resource_id: newId,
       resource_type: "astromeda_review_email_queue",
       request,

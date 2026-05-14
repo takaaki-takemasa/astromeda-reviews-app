@@ -130,16 +130,8 @@ export interface HierarchicalSelection {
   productTitle?: string;
 }
 
-/**
- * Shopify Metaobject astromeda_review_email_config の target_type フィールドは
- * single_choice enum で ["global", "ip_collection", "product_collection"] のみ許容。
- * 詳細な分類 (IP × 製品群、color × GPU、specific product) は target_handle に
- * 接頭辞付き複合キー (例: "ip:jujutsukaisen-collaboration+group:gaming-pc") で格納。
- */
-export type MetaobjectTargetType = "global" | "ip_collection" | "product_collection";
-
 export interface ResolvedTarget {
-  target_type: MetaobjectTargetType;
+  target_type: "collection" | "product_tag" | "product" | "all";
   target_handle: string;
   target_label: string;
 }
@@ -147,28 +139,28 @@ export interface ResolvedTarget {
 export function resolveTarget(sel: HierarchicalSelection): ResolvedTarget {
   if (sel.root === "ip_collab") {
     const ip = IP_COLLABS.find((x) => x.handle === sel.ip);
-    if (!ip) return { target_type: "global", target_handle: "", target_label: "未選択" };
+    if (!ip) return { target_type: "all", target_handle: "", target_label: "未選択" };
     const group = sel.productGroup ? PRODUCT_GROUPS.find((g) => g.slug === sel.productGroup) : null;
     const groupLabel = group ? group.jpName : "全製品群";
 
     if (sel.scope === "specific" && sel.productHandle) {
       return {
-        target_type: "product_collection",
-        target_handle: `product:${sel.productHandle}`,
+        target_type: "product",
+        target_handle: sel.productHandle,
         target_label: `${ip.jpName} ${groupLabel}: ${sel.productTitle || sel.productHandle}`,
       };
     }
-    // IP + 製品群指定 → product_collection に複合キー (実際の配信はアプリ側で IP collection × group filter で実装)
+    // IP + 製品群指定 → product_tag に複合キー (実際の配信はアプリ側で IP collection × group filter で実装)
     if (group) {
       return {
-        target_type: "product_collection",
-        target_handle: `ip:${ip.handle}+group:${group.slug}`,
+        target_type: "product_tag",
+        target_handle: `${ip.handle}+${group.slug}`,
         target_label: `${ip.jpName} の ${group.jpName} 全商品`,
       };
     }
-    // IP 全商品 → ip_collection (Metaobject enum 値そのまま)
+    // IP 全商品
     return {
-      target_type: "ip_collection",
+      target_type: "collection",
       target_handle: ip.productCollectionHandle || ip.handle,
       target_label: `${ip.jpName} 全商品 (全製品群)`,
     };
@@ -182,39 +174,39 @@ export function resolveTarget(sel: HierarchicalSelection): ResolvedTarget {
 
   if (sel.scope === "specific" && sel.productHandle) {
     return {
-      target_type: "product_collection",
-      target_handle: `product:${sel.productHandle}`,
+      target_type: "product",
+      target_handle: sel.productHandle,
       target_label: `アストロメダPC ${colorLabel}/${gpuLabel}: ${sel.productTitle || sel.productHandle}`,
     };
   }
 
-  // color + gpu both specified
+  // color + gpu both specified → product_tag like color-purple-gpu-rtx4060
   if (color && gpu) {
     return {
-      target_type: "product_collection",
-      target_handle: `color:${color.slug}+gpu:${gpu.slug}`,
+      target_type: "product_tag",
+      target_handle: `${color.slug}+${gpu.slug}`,
       target_label: `アストロメダPC ${color.jpName} × ${gpu.jpName}`,
     };
   }
-  // only color
+  // only color → use color collection
   if (color) {
     return {
-      target_type: "product_collection",
-      target_handle: `color:${color.slug}`,
+      target_type: "collection",
+      target_handle: color.slug,
       target_label: `アストロメダPC ${color.jpName}`,
     };
   }
-  // only gpu
+  // only gpu → product_tag
   if (gpu) {
     return {
-      target_type: "product_collection",
-      target_handle: `gpu:${gpu.slug}`,
+      target_type: "product_tag",
+      target_handle: gpu.slug,
       target_label: `アストロメダPC ${gpu.jpName}`,
     };
   }
   // nothing specified → all astromeda gaming PCs
   return {
-    target_type: "global",
+    target_type: "collection",
     target_handle: "gaming-pc",
     target_label: "アストロメダPC 全商品",
   };
@@ -224,27 +216,38 @@ export function resolveTarget(sel: HierarchicalSelection): ResolvedTarget {
  * Metaobject の target_type / target_handle を階層選択に逆解決する (編集時に使う)
  */
 export function inferSelection(target_type: string, target_handle: string): HierarchicalSelection {
-  // ip_collection → IP コラボ全商品
-  if (target_type === "ip_collection") {
-    const ipMatch = IP_COLLABS.find((ip) => ip.handle === target_handle || ip.productCollectionHandle === target_handle);
-    if (ipMatch) return { root: "ip_collab", ip: ipMatch.handle, scope: "all" };
+  // IP collab collection?
+  const ipMatch = IP_COLLABS.find((ip) => ip.handle === target_handle || ip.productCollectionHandle === target_handle);
+  if (target_type === "collection" && ipMatch) {
+    return { root: "ip_collab", ip: ipMatch.handle, scope: "all" };
   }
-
-  // global → アストロメダ全商品
-  if (target_type === "global") {
+  // Astromeda color collection
+  const colorMatch = ASTROMEDA_COLORS.find((c) => c.slug === target_handle);
+  if (target_type === "collection" && colorMatch) {
+    return { root: "astromeda", color: colorMatch.slug, scope: "all" };
+  }
+  if (target_type === "collection" && target_handle === "gaming-pc") {
     return { root: "astromeda", scope: "all" };
   }
-
-  // product_collection → 接頭辞で分類
-  if (target_type === "product_collection") {
-    // "product:xxx" → 個別商品
-    if (target_handle.startsWith("product:")) {
-      const handle = target_handle.slice("product:".length);
-      return { root: "astromeda", scope: "specific", productHandle: handle };
+  if (target_type === "product_tag") {
+    // IP+group pattern: e.g. "jujutsukaisen-collaboration+gaming-pc"
+    if (target_handle.includes("+")) {
+      const [head, tail] = target_handle.split("+");
+      const ipMatch = IP_COLLABS.find((x) => x.handle === head);
+      const groupMatch = PRODUCT_GROUPS.find((g) => g.slug === tail);
+      if (ipMatch && groupMatch) {
+        return { root: "ip_collab", ip: ipMatch.handle, productGroup: groupMatch.slug, scope: "all" };
+      }
+      // color+gpu pattern
+      return { root: "astromeda", color: head, gpu: tail, scope: "all" };
     }
-    // "ip:xxx+group:yyy" → IP × 製品群
-    if (target_handle.startsWith("ip:")) {
-      const parts = target_handle.split("+");
-      const ipPart = parts[0]?.slice("ip:".length);
-      const groupPart = parts[1]?.startsWith("group:") ? parts[1].slice("group:".length) : undefined;
-      const ipMatch = IP_COLLABS.find((x) => x
+    // GPU only
+    const gpuMatch = ASTROMEDA_GPUS.find((g) => g.slug === target_handle);
+    if (gpuMatch) return { root: "astromeda", gpu: gpuMatch.slug, scope: "all" };
+  }
+  // product → unknown root, default astromeda
+  if (target_type === "product") {
+    return { root: "astromeda", scope: "specific", productHandle: target_handle };
+  }
+  return { root: "astromeda", scope: "all" };
+}
