@@ -4,14 +4,17 @@ import { boundary } from "@shopify/shopify-app-remix/server";
 import { AppProvider } from "@shopify/shopify-app-remix/react";
 import { NavMenu } from "@shopify/app-bridge-react";
 import polarisStyles from "@shopify/polaris/build/esm/styles.css?url";
+import brandTokensStyles from "../styles/brand-tokens.css?url";
 
 import { authenticate } from "../shopify.server";
 
-export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
+export const links = () => [
+  { rel: "stylesheet", href: polarisStyles },
+  { rel: "stylesheet", href: brandTokensStyles },
+];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.admin(request);
-
   return { apiKey: process.env.SHOPIFY_API_KEY || "" };
 };
 
@@ -22,9 +25,12 @@ export default function App() {
     <AppProvider isEmbeddedApp apiKey={apiKey}>
       <NavMenu>
         <Link to="/app" rel="home">
-          Home
+          口コミ管理
         </Link>
-        <Link to="/app/additional">Additional page</Link>
+        <Link to="/app/reviews">レビュー一覧</Link>
+        <Link to="/app/email">メール設定</Link>
+        <Link to="/app/tokens">ギフトトークン</Link>
+        <Link to="/app/queue">送信キュー</Link>
       </NavMenu>
       <Outlet />
     </AppProvider>

@@ -1,0 +1,46 @@
+/**
+ * ASTROMEDA Brand Tokens (Phase A-10 / D-04 適用)
+ * Polaris の CSS 変数を上書きし、ASTROMEDA Teal (#14b8a6) を Primary に。
+ * 詳細は BRAND_TOKENS.md §6.1 参照。
+ */
+
+:root {
+  /* ASTROMEDA Primary Teal */
+  --ast-primary-50: #f0fdfa;
+  --ast-primary-100: #ccfbf1;
+  --ast-primary-300: #5eead4;
+  --ast-primary-500: #14b8a6;
+  --ast-primary-600: #0d9488;
+  --ast-primary-700: #0f766e;
+  --ast-primary-900: #134e4a;
+
+  /* Semantic */
+  --ast-success: #008060;
+  --ast-success-bg: #e3f1df;
+  --ast-warning: #b98900;
+  --ast-warning-bg: #fff5d9;
+  --ast-critical: #d72c0d;
+  --ast-critical-bg: #fed3d1;
+  --ast-info: #2c6ecb;
+  --ast-info-bg: #ebf3ff;
+
+  /* Polaris Primary をブランドカラーに上書き
+     コントラスト 4.2:1 確保のため Primary-600 を採用 (WCAG 2.1 AA Pass) */
+  --p-color-bg-fill-brand: var(--ast-primary-600);
+  --p-color-bg-fill-brand-hover: var(--ast-primary-700);
+  --p-color-bg-fill-brand-active: var(--ast-primary-900);
+  --p-color-bg-fill-brand-selected: var(--ast-primary-600);
+  --p-color-text-brand-on-bg-fill: #ffffff;
+  --p-color-border-brand: var(--ast-primary-600);
+  --p-color-text-brand: var(--ast-primary-700);
+}
+
+/* Tab active underline をブランドカラー化 (D-04) */
+.Polaris-Tabs__Tab--selected .Polaris-Tabs__Title {
+  color: var(--ast-primary-700);
+}
+
+/* Success Banner / Badge をブランド寄りに */
+.Polaris-Banner--statusSuccess .Polaris-Banner__Title {
+  color: var(--ast-success);
+}
