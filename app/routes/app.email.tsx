@@ -1,13 +1,18 @@
 import {
   Page, Layout, Card, BlockStack, InlineStack, Text, EmptyState, IndexTable, Badge,
   Button, Modal, TextField, FormLayout, Checkbox, Banner, Select, Box, Divider,
-  InlineGrid,
+  InlineGrid, ChoiceList,
 } from "@shopify/polaris";
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
 import { useLoaderData, useFetcher, useRevalidator } from "@remix-run/react";
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { authenticate } from "../shopify.server";
 import { appendAuditLogSafe } from "../lib/audit-log";
+import {
+  IP_COLLABS, ASTROMEDA_COLORS, ASTROMEDA_GPUS,
+  resolveTarget, inferSelection,
+  type HierarchicalSelection, type TargetRoot,
+} from "../lib/astromeda-taxonomy";
 
 type TargetType = "collection" | "product_tag" | "product" | "category" | "all";
 
@@ -26,45 +31,19 @@ interface EmailConfig {
   last_modified_by: string;
 }
 
-interface CollectionOption { handle: string; title: string; productCount: number; }
-interface ProductTagOption { tag: string; count: number; }
-interface ProductOption { id: string; title: string; handle: string; collectionTitle: string; }
+interface ProductOption { id: string; title: string; handle: string; tags: string[]; collectionHandles: string[]; }
 
 const LIST_QUERY = `#graphql
   query ListEmailConfigs($first: Int!) {
     metaobjects(type: "astromeda_review_email_config", first: $first) {
       edges {
-        node {
-          id handle updatedAt
-          fields { key value }
-        }
+        node { id handle updatedAt fields { key value } }
       }
     }
   }
 `;
 
-const COLLECTIONS_QUERY = `#graphql
-  query ListCollections($first: Int!, $after: String) {
-    collections(first: $first, after: $after, sortKey: TITLE) {
-      edges {
-        cursor
-        node { id handle title productsCount { count } }
-      }
-      pageInfo { hasNextPage endCursor }
-    }
-  }
-`;
-
-const PRODUCT_TAGS_QUERY = `#graphql
-  query ListProductTags($first: Int!) {
-    productTags(first: $first) {
-      edges { node }
-    }
-  }
-`;
-
-// 親製品 (= parent PC products, excluding parts) を取得
-// pulldown-component / parts / パーツ タグを持つ商品は除外
+// すべての親製品 (PCケース等のパーツ除外) を取得して階層フィルタに使う
 const PARENT_PRODUCTS_QUERY = `#graphql
   query ListParentProducts($first: Int!, $query: String!) {
     products(first: $first, query: $query, sortKey: TITLE) {
@@ -72,7 +51,7 @@ const PARENT_PRODUCTS_QUERY = `#graphql
         node {
           id title handle
           tags
-          collections(first: 3) { edges { node { title handle } } }
+          collections(first: 10) { edges { node { handle } } }
         }
       }
     }
@@ -118,26 +97,32 @@ function extractField(node: { fields: Array<{ key: string; value: string }> }, k
   return node.fields.find((f) => f.key === key)?.value ?? "";
 }
 
+const PARTS_TAG_PATTERNS = [
+  /pulldown[-_]?component/i,
+  /^parts?$/i,
+  /パーツ/,
+  /^部品/,
+  /add[-_]?on/i,
+  /サブ商品/,
+  /component$/i,
+];
+const isPartTag = (tag: string) => PARTS_TAG_PATTERNS.some((p) => p.test(tag));
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
 
-  // 親製品クエリ: PCケース等のパーツを除外 (pulldown-component / parts / パーツ タグ持ちを除く)
-  // Shopify Admin search: tag_not の構文がないので、まず all を取って後段でフィルタする方式に
+  // 親製品クエリ: コラボPC OR gaming-pc OR アストロメダPC タグ持ち
   const parentProductsQuery = "status:active AND (tag:コラボPC OR tag:gaming-pc OR tag:アストロメダPC)";
 
-  const [cfgRes, colRes, tagRes, orderRes, prodRes] = await Promise.all([
+  const [cfgRes, prodRes, orderRes] = await Promise.all([
     admin.graphql(LIST_QUERY, { variables: { first: 50 } }),
-    admin.graphql(COLLECTIONS_QUERY, { variables: { first: 100, after: null } }),
-    admin.graphql(PRODUCT_TAGS_QUERY, { variables: { first: 250 } }),
+    admin.graphql(PARENT_PRODUCTS_QUERY, { variables: { first: 250, query: parentProductsQuery } }).catch(() => null),
     admin.graphql(ORDERS_LAST_30D_COUNT_QUERY).catch(() => null),
-    admin.graphql(PARENT_PRODUCTS_QUERY, { variables: { first: 100, query: parentProductsQuery } }).catch(() => null),
   ]);
 
   const cfgJson = (await cfgRes.json()) as { data?: { metaobjects?: { edges: Array<{ node: { id: string; updatedAt: string; fields: Array<{ key: string; value: string }> } }> } } };
-  const colJson = (await colRes.json()) as { data?: { collections?: { edges: Array<{ node: { id: string; handle: string; title: string; productsCount?: { count: number } } }> } } };
-  const tagJson = (await tagRes.json()) as { data?: { productTags?: { edges: Array<{ node: string }> } } };
-  const orderJson = orderRes ? (await orderRes.json()) as { data?: { ordersCount?: { count: number; precision: string } } } : null;
-  const prodJson = prodRes ? (await prodRes.json()) as { data?: { products?: { edges: Array<{ node: { id: string; title: string; handle: string; tags: string[]; collections?: { edges: Array<{ node: { title: string; handle: string } }> } } }> } } } : null;
+  const prodJson = prodRes ? (await prodRes.json()) as { data?: { products?: { edges: Array<{ node: { id: string; title: string; handle: string; tags: string[]; collections?: { edges: Array<{ node: { handle: string } }> } } }> } } } : null;
+  const orderJson = orderRes ? (await orderRes.json()) as { data?: { ordersCount?: { count: number } } } : null;
 
   const configs: EmailConfig[] = (cfgJson.data?.metaobjects?.edges ?? []).map((e) => ({
     id: e.node.id,
@@ -154,41 +139,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     last_modified_by: extractField(e.node, "last_modified_by"),
   }));
 
-  const collections: CollectionOption[] = (colJson.data?.collections?.edges ?? []).map((e) => ({
-    handle: e.node.handle,
-    title: e.node.title,
-    productCount: e.node.productsCount?.count ?? 0,
-  }));
-
-  // 親製品タグのみ残す: 部品系タグ (pulldown-component / parts / パーツ / 部品 / add-on) を除外
-  const PARTS_TAG_PATTERNS = [
-    /pulldown[-_]?component/i,
-    /^parts?$/i,
-    /パーツ/,
-    /^部品/,
-    /add[-_]?on/i,
-    /サブ商品/,
-    /component$/i,
-  ];
-  const isPartTag = (tag: string) => PARTS_TAG_PATTERNS.some((p) => p.test(tag));
-
-  const tags: ProductTagOption[] = (tagJson.data?.productTags?.edges ?? [])
-    .map((e) => ({ tag: e.node, count: 0 }))
-    .filter((t) => t.tag && t.tag.length > 0 && !isPartTag(t.tag));
-
-  // 親製品 (個別商品レベル指定用) - 部品商品 (pulldown-component タグ持ち) は除外
   const products: ProductOption[] = (prodJson?.data?.products?.edges ?? [])
     .filter((e) => !(e.node.tags ?? []).some((t) => isPartTag(t)))
     .map((e) => ({
       id: e.node.id,
       title: e.node.title,
       handle: e.node.handle,
-      collectionTitle: e.node.collections?.edges?.[0]?.node?.title ?? "",
+      tags: e.node.tags ?? [],
+      collectionHandles: (e.node.collections?.edges ?? []).map((c) => c.node.handle),
     }));
 
-  const ordersLast30Days = orderJson?.data?.ordersCount?.count ?? 0;
-
-  return { configs, collections, tags, products, ordersLast30Days };
+  return { configs, products, ordersLast30Days: orderJson?.data?.ordersCount?.count ?? 0 };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -249,13 +210,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return { ok: false, error: "unknown intent" };
 };
 
-// ASTROMEDA カテゴリ (新サイト販売対象のみ・PCパーツ/クリエイターPC/ストリーマーPCは除外)
-const PREDEFINED_CATEGORIES = [
-  { label: "ゲーミングPC (アストロメダPC本体)", value: "gaming-pc" },
-  { label: "ガジェット (マウスパッド/PCケース/キーボード/パネル等)", value: "gadgets" },
-  { label: "グッズ (アクリル/Tシャツ/パーカー等)", value: "goods" },
-];
-
 const DEFAULT_TEMPLATE = `{{ customer.first_name }} 様
 
 このたびは ASTROMEDA の商品をご購入いただき誠にありがとうございます。
@@ -268,54 +222,90 @@ const DEFAULT_TEMPLATE = `{{ customer.first_name }} 様
 ASTROMEDA / 株式会社マイニングベース
 `;
 
-// Simple Liquid-ish renderer for preview (only basic {{ var }} replacement)
 function renderPreview(template: string, vars: Record<string, string>): string {
   return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key) => vars[key] ?? `{{ ${key} }}`);
 }
 
 export default function EmailTab() {
-  const { configs, collections, tags, products, ordersLast30Days } = useLoaderData<typeof loader>();
+  const { configs, products, ordersLast30Days } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const revalidator = useRevalidator();
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<EmailConfig | null>(null);
-  const [form, setForm] = useState({
-    target_type: "collection" as TargetType,
-    target_handle: "",
-    target_label: "",
+
+  // 階層選択状態
+  const [sel, setSel] = useState<HierarchicalSelection>({ root: "astromeda", scope: "all" });
+
+  // メール設定フォーム状態 (上記とは別管理)
+  const [meta, setMeta] = useState({
     enabled: false,
     delay_days: 14,
     subject: "ご感想をお聞かせください",
     body_template: DEFAULT_TEMPLATE,
     reply_to: "support@mining-base.co.jp",
     incentive_text: "",
+    target_label: "",
   });
 
-  // Auto-fill target_label when target_handle changes
+  // 階層選択から target を解決 (リアルタイム)
+  const resolved = useMemo(() => resolveTarget(sel), [sel]);
+
+  // target_label を resolved.label で自動同期 (CEO が手動で上書きしていなければ)
   useEffect(() => {
-    if (form.target_type === "collection") {
-      const c = collections.find((x) => x.handle === form.target_handle);
-      if (c && !form.target_label) setForm((f) => ({ ...f, target_label: c.title }));
-    } else if (form.target_type === "product") {
-      const p = products.find((x) => x.handle === form.target_handle);
-      if (p && !form.target_label) setForm((f) => ({ ...f, target_label: p.title }));
-    } else if (form.target_type === "category") {
-      const cat = PREDEFINED_CATEGORIES.find((x) => x.value === form.target_handle);
-      if (cat && !form.target_label) setForm((f) => ({ ...f, target_label: cat.label }));
+    if (!editing) {
+      setMeta((m) => ({ ...m, target_label: resolved.target_label }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.target_handle, form.target_type]);
+  }, [resolved.target_label]);
+
+  // 階層選択でフィルタした親製品リスト (個別商品プルダウン用)
+  const filteredProducts = useMemo<ProductOption[]>(() => {
+    if (sel.root === "ip_collab" && sel.ip) {
+      // IP コラボの商品 (collection に含まれる)
+      const ip = IP_COLLABS.find((x) => x.handle === sel.ip);
+      const targetHandles = [ip?.handle, ip?.productCollectionHandle].filter(Boolean) as string[];
+      return products.filter((p) => p.collectionHandles.some((h) => targetHandles.includes(h)));
+    }
+    if (sel.root === "astromeda") {
+      // アストロメダPC: カラー collection に含まれる + GPU タグ持ち
+      let filtered = products;
+      if (sel.color) {
+        filtered = filtered.filter((p) => p.collectionHandles.includes(sel.color!));
+      }
+      if (sel.gpu) {
+        const gpu = ASTROMEDA_GPUS.find((g) => g.slug === sel.gpu);
+        if (gpu) {
+          const gpuTagPatterns = [gpu.slug, gpu.jpName, gpu.jpName.replace(/\s/g, "")];
+          filtered = filtered.filter((p) =>
+            p.tags.some((t) => gpuTagPatterns.some((pattern) => t.toLowerCase().includes(pattern.toLowerCase())))
+          );
+        }
+      }
+      return filtered;
+    }
+    return [];
+  }, [sel, products]);
 
   const openCreate = useCallback(() => {
     setEditing(null);
-    setForm({ target_type: "collection", target_handle: "", target_label: "", enabled: false, delay_days: 14, subject: "ご感想をお聞かせください", body_template: DEFAULT_TEMPLATE, reply_to: "support@mining-base.co.jp", incentive_text: "" });
+    setSel({ root: "astromeda", scope: "all" });
+    setMeta({
+      enabled: false, delay_days: 14, subject: "ご感想をお聞かせください",
+      body_template: DEFAULT_TEMPLATE, reply_to: "support@mining-base.co.jp",
+      incentive_text: "", target_label: "",
+    });
     setModalOpen(true);
   }, []);
 
   const openEdit = useCallback((c: EmailConfig) => {
     setEditing(c);
-    setForm({ target_type: c.target_type, target_handle: c.target_handle, target_label: c.target_label, enabled: c.enabled, delay_days: c.delay_days, subject: c.subject, body_template: c.body_template, reply_to: c.reply_to, incentive_text: c.incentive_text });
+    setSel(inferSelection(c.target_type, c.target_handle));
+    setMeta({
+      enabled: c.enabled, delay_days: c.delay_days, subject: c.subject,
+      body_template: c.body_template, reply_to: c.reply_to,
+      incentive_text: c.incentive_text, target_label: c.target_label,
+    });
     setModalOpen(true);
   }, []);
 
@@ -323,11 +313,19 @@ export default function EmailTab() {
     const fd = new FormData();
     fd.set("intent", editing ? "update" : "create");
     if (editing) fd.set("id", editing.id);
-    Object.entries(form).forEach(([k, v]) => fd.set(k, typeof v === "boolean" ? (v ? "true" : "false") : String(v)));
+    fd.set("target_type", resolved.target_type);
+    fd.set("target_handle", resolved.target_handle);
+    fd.set("target_label", meta.target_label || resolved.target_label);
+    fd.set("enabled", meta.enabled ? "true" : "false");
+    fd.set("delay_days", String(meta.delay_days));
+    fd.set("subject", meta.subject);
+    fd.set("body_template", meta.body_template);
+    fd.set("reply_to", meta.reply_to);
+    fd.set("incentive_text", meta.incentive_text);
     fetcher.submit(fd, { method: "post" });
     setModalOpen(false);
     setTimeout(() => revalidator.revalidate(), 300);
-  }, [editing, form, fetcher, revalidator]);
+  }, [editing, sel, resolved, meta, fetcher, revalidator]);
 
   const toggle = useCallback((c: EmailConfig) => {
     const fd = new FormData();
@@ -347,68 +345,20 @@ export default function EmailTab() {
     setTimeout(() => revalidator.revalidate(), 300);
   }, [fetcher, revalidator]);
 
-  // Compute send-volume estimate for current form selection
+  // 送信予定数推定
   const sendEstimate = useMemo(() => {
-    let matchingProducts = 0;
-    let label = "";
-    if (form.target_type === "collection") {
-      const c = collections.find((x) => x.handle === form.target_handle);
-      matchingProducts = c?.productCount ?? 0;
-      label = c ? `「${c.title}」コレクション` : "(未選択)";
-    } else if (form.target_type === "product") {
-      const p = products.find((x) => x.handle === form.target_handle);
-      matchingProducts = p ? 1 : 0;
-      label = p ? `個別商品「${p.title}」${p.collectionTitle ? ` (${p.collectionTitle})` : ""}` : "(未選択)";
-    } else if (form.target_type === "product_tag") {
-      matchingProducts = 0;
-      label = form.target_handle ? `親製品タグ「${form.target_handle}」` : "(未選択)";
-    } else if (form.target_type === "category") {
-      const cat = PREDEFINED_CATEGORIES.find((x) => x.value === form.target_handle);
-      label = cat ? `カテゴリ「${cat.label}」` : "(未選択)";
-    } else {
-      matchingProducts = collections.reduce((s, c) => s + c.productCount, 0);
-      label = "全商品 (フォールバック)";
-    }
-    const targetRatio = form.target_type === "all" ? 1
-      : form.target_type === "product" ? (matchingProducts > 0 ? 0.02 : 0)
-      : matchingProducts > 0 ? Math.min(1, matchingProducts / 100) : 0;
-    const estimatedSends = Math.round(ordersLast30Days * targetRatio);
-    return { label, matchingProducts, estimatedSends, ordersLast30Days };
-  }, [form.target_type, form.target_handle, collections, products, ordersLast30Days]);
+    const matchingProducts = sel.scope === "specific" ? 1 : filteredProducts.length;
+    const targetRatio = matchingProducts === 0 ? 0
+      : sel.scope === "specific" ? 0.02
+      : Math.min(1, matchingProducts / Math.max(50, products.length));
+    return {
+      matchingProducts,
+      label: resolved.target_label,
+      estimatedSends: Math.round(ordersLast30Days * targetRatio),
+      ordersLast30Days,
+    };
+  }, [sel, filteredProducts, resolved, products.length, ordersLast30Days]);
 
-  // Build dropdown options based on target_type
-  const handleOptions = useMemo(() => {
-    if (form.target_type === "collection") {
-      return [
-        { label: "コレクションを選択してください", value: "" },
-        ...collections.map((c) => ({ label: `${c.title} (${c.productCount} 商品)`, value: c.handle })),
-      ];
-    }
-    if (form.target_type === "product_tag") {
-      return [
-        { label: "親製品タグを選択してください", value: "" },
-        ...tags.map((t) => ({ label: t.tag, value: t.tag })),
-      ];
-    }
-    if (form.target_type === "product") {
-      return [
-        { label: "個別商品を選択してください", value: "" },
-        ...products.map((p) => ({
-          label: p.collectionTitle ? `${p.title} (${p.collectionTitle})` : p.title,
-          value: p.handle,
-        })),
-      ];
-    }
-    if (form.target_type === "category") {
-      return [
-        { label: "カテゴリを選択してください", value: "" },
-        ...PREDEFINED_CATEGORIES,
-      ];
-    }
-    return [{ label: "(全商品共通設定なので不要)", value: "" }];
-  }, [form.target_type, collections, tags, products]);
-
-  // Real-time preview rendering
   const previewVars = {
     "customer.first_name": "山田",
     "customer.last_name": "太郎",
@@ -418,13 +368,37 @@ export default function EmailTab() {
     "order.name": "#10001",
     "shop.name": "ASTROMEDA",
   };
-  const previewSubject = renderPreview(form.subject, previewVars);
-  const previewBody = renderPreview(form.body_template, previewVars);
+  const previewSubject = renderPreview(meta.subject, previewVars);
+  const previewBody = renderPreview(meta.body_template, previewVars);
+
+  // ─────────────────────────────────────────────
+  // UI build
+  // ─────────────────────────────────────────────
+
+  const ipOptions = useMemo(() => [
+    { label: "── IP を選択 ──", value: "" },
+    ...IP_COLLABS.map((ip) => ({ label: ip.jpName, value: ip.handle })),
+  ], []);
+
+  const colorOptions = useMemo(() => [
+    { label: "全色 (8 色まとめて)", value: "" },
+    ...ASTROMEDA_COLORS.map((c) => ({ label: c.jpName, value: c.slug })),
+  ], []);
+
+  const gpuOptions = useMemo(() => [
+    { label: "全 GPU", value: "" },
+    ...ASTROMEDA_GPUS.map((g) => ({ label: g.jpName, value: g.slug })),
+  ], []);
+
+  const productOptions = useMemo(() => [
+    { label: filteredProducts.length === 0 ? "(該当商品なし - 上の絞り込みを変更してください)" : "個別商品を選択", value: "" },
+    ...filteredProducts.map((p) => ({ label: p.title, value: p.handle })),
+  ], [filteredProducts]);
 
   return (
     <Page
       title="メール設定"
-      subtitle="IP コラボ別・カテゴリ別にレビュー依頼メールの本文と送信トリガーを編集"
+      subtitle="IP コラボ別・カラー別・GPU 別にレビュー依頼メールを編集"
       primaryAction={{ content: "新規メール設定を追加", onAction: openCreate }}
     >
       <Layout>
@@ -435,19 +409,18 @@ export default function EmailTab() {
           <Card>
             {configs.length === 0 ? (
               <EmptyState heading="メール設定はまだ登録されていません" image="" action={{ content: "新規メール設定を追加", onAction: openCreate }}>
-                <Text as="p" variant="bodyMd">IP コラボ別やカテゴリ別にレビュー依頼メールの文面と送信トリガー (発送 N 日後) をここで管理します。</Text>
+                <Text as="p" variant="bodyMd">IP コラボ別、アストロメダPC のカラー・GPU 別にレビュー依頼メールをここで管理します。</Text>
               </EmptyState>
             ) : (
               <IndexTable
                 resourceName={{ singular: "メール設定", plural: "メール設定" }}
                 itemCount={configs.length}
                 selectable={false}
-                headings={[{ title: "ターゲット" },{ title: "種別" },{ title: "件名" },{ title: "delay (日)" },{ title: "状態" },{ title: "操作" }]}
+                headings={[{ title: "ターゲット" },{ title: "件名" },{ title: "delay (日)" },{ title: "状態" },{ title: "操作" }]}
               >
                 {configs.map((c, idx) => (
                   <IndexTable.Row id={c.id} key={c.id} position={idx}>
                     <IndexTable.Cell><Text as="span" variant="bodyMd" fontWeight="semibold">{c.target_label || c.target_handle || "(無名)"}</Text></IndexTable.Cell>
-                    <IndexTable.Cell><Badge>{c.target_type === "collection" ? "コレクション" : c.target_type === "product" ? "個別商品" : c.target_type === "product_tag" ? "タグ" : c.target_type === "category" ? "カテゴリ" : "全商品"}</Badge></IndexTable.Cell>
                     <IndexTable.Cell>{c.subject}</IndexTable.Cell>
                     <IndexTable.Cell>{c.delay_days}</IndexTable.Cell>
                     <IndexTable.Cell>{c.enabled ? <Badge tone="success">有効</Badge> : <Badge tone="attention">無効</Badge>}</IndexTable.Cell>
@@ -470,128 +443,147 @@ export default function EmailTab() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title={editing ? "メール設定を編集" : "新規メール設定を追加"}
-        primaryAction={{ content: "保存", onAction: submit, disabled: form.target_type !== "all" && !form.target_handle }}
+        primaryAction={{ content: "保存", onAction: submit }}
         secondaryActions={[{ content: "キャンセル", onAction: () => setModalOpen(false) }]}
         size="large"
       >
         <Modal.Section>
           <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
-            {/* 左カラム: 設定フォーム */}
-            <FormLayout>
-              <FormLayout.Group>
-                <Select
-                  label="ターゲット種別"
-                  options={[
-                    { label: "コレクション (IP コラボ一括)", value: "collection" },
-                    { label: "個別商品 (この製品だけ)", value: "product" },
-                    { label: "商品タグ (親製品限定)", value: "product_tag" },
-                    { label: "カテゴリ", value: "category" },
-                    { label: "全商品 (フォールバック)", value: "all" },
+            {/* 左カラム: 階層フォーム */}
+            <BlockStack gap="400">
+              {/* Step 1: ルート分岐 */}
+              <Box padding="300" background="bg-surface-secondary" borderRadius="200">
+                <ChoiceList
+                  title="① まず大分類を選択"
+                  choices={[
+                    { label: "🖥️ アストロメダ非IPコラボ ゲーミングPC", value: "astromeda" },
+                    { label: "✨ IPコラボ製品 (呪術廻戦・コードギアス 等)", value: "ip_collab" },
                   ]}
-                  value={form.target_type}
-                  onChange={(v) => setForm({ ...form, target_type: v as TargetType, target_handle: "", target_label: "" })}
+                  selected={[sel.root]}
+                  onChange={(v) => setSel({ root: v[0] as TargetRoot, scope: "all" })}
                 />
+              </Box>
+
+              {/* Step 2-IP: IP 選択 */}
+              {sel.root === "ip_collab" ? (
+                <Box padding="300" background="bg-surface-secondary" borderRadius="200">
+                  <BlockStack gap="300">
+                    <Select label="② IP を選択" options={ipOptions} value={sel.ip || ""} onChange={(v) => setSel({ ...sel, ip: v, scope: "all", productHandle: undefined })} />
+                    {sel.ip ? (
+                      <ChoiceList
+                        title="③ 絞り込み"
+                        choices={[
+                          { label: `この IP の全商品 (${filteredProducts.length} 件)`, value: "all" },
+                          { label: "個別商品を選択", value: "specific" },
+                        ]}
+                        selected={[sel.scope]}
+                        onChange={(v) => setSel({ ...sel, scope: v[0] as "all" | "specific" })}
+                      />
+                    ) : null}
+                  </BlockStack>
+                </Box>
+              ) : null}
+
+              {/* Step 2-Astromeda: カラー + GPU */}
+              {sel.root === "astromeda" ? (
+                <Box padding="300" background="bg-surface-secondary" borderRadius="200">
+                  <BlockStack gap="300">
+                    <FormLayout.Group>
+                      <Select label="② カラー" options={colorOptions} value={sel.color || ""} onChange={(v) => setSel({ ...sel, color: v || undefined, productHandle: undefined })} />
+                      <Select label="③ GPU" options={gpuOptions} value={sel.gpu || ""} onChange={(v) => setSel({ ...sel, gpu: v || undefined, productHandle: undefined })} />
+                    </FormLayout.Group>
+                    <ChoiceList
+                      title="④ 絞り込み"
+                      choices={[
+                        { label: `この組み合わせの全商品 (${filteredProducts.length} 件)`, value: "all" },
+                        { label: "個別商品を選択", value: "specific" },
+                      ]}
+                      selected={[sel.scope]}
+                      onChange={(v) => setSel({ ...sel, scope: v[0] as "all" | "specific" })}
+                    />
+                  </BlockStack>
+                </Box>
+              ) : null}
+
+              {/* Step 3: 個別商品プルダウン (scope=specific のとき) */}
+              {sel.scope === "specific" ? (
                 <Select
-                  label={form.target_type === "collection" ? "コレクション" : form.target_type === "product_tag" ? "商品タグ (親製品)" : form.target_type === "category" ? "カテゴリ" : form.target_type === "product" ? "個別商品" : "—"}
-                  options={handleOptions}
-                  value={form.target_handle}
-                  onChange={(v) => setForm({ ...form, target_handle: v })}
-                  disabled={form.target_type === "all"}
+                  label="個別商品"
+                  options={productOptions}
+                  value={sel.productHandle || ""}
+                  onChange={(v) => {
+                    const p = filteredProducts.find((x) => x.handle === v);
+                    setSel({ ...sel, productHandle: v || undefined, productTitle: p?.title });
+                  }}
+                  disabled={filteredProducts.length === 0}
                 />
-              </FormLayout.Group>
+              ) : null}
 
-              <TextField label="ターゲット表示名 (管理画面用)" autoComplete="off" value={form.target_label} onChange={(v) => setForm({ ...form, target_label: v })} helpText="例: 呪術廻戦コラボ。空欄なら自動で選択名を採用" />
-
-              {/* 送信予定数表示 */}
+              {/* 送信予定数 */}
               <Box padding="300" background="bg-surface-info" borderRadius="200">
                 <BlockStack gap="200">
                   <Text as="h4" variant="headingSm">📊 送信予定数の目安</Text>
-                  <Text as="p" variant="bodySm">
-                    対象: <strong>{sendEstimate.label}</strong>
-                  </Text>
-                  {form.target_type !== "all" ? (
-                    <Text as="p" variant="bodySm">対象商品数: <strong>{sendEstimate.matchingProducts}</strong> 件</Text>
-                  ) : null}
-                  <Text as="p" variant="bodySm">
-                    過去 30 日の発送注文: <strong>{sendEstimate.ordersLast30Days}</strong> 件
-                  </Text>
-                  <Text as="p" variant="bodyXs" tone="subdued">
-                    ※「対象商品数 / 全商品」の比率 × 過去 30 日注文数 × 1 を掛けた粗推定: 月 <strong>約 {sendEstimate.estimatedSends}</strong> 通の送信見込み
-                  </Text>
+                  <Text as="p" variant="bodySm">対象: <strong>{sendEstimate.label}</strong></Text>
+                  <Text as="p" variant="bodySm">対象商品数: <strong>{sendEstimate.matchingProducts}</strong> 件</Text>
+                  <Text as="p" variant="bodySm">過去 30 日の発送注文: <strong>{sendEstimate.ordersLast30Days}</strong> 件</Text>
+                  <Text as="p" variant="bodyXs" tone="subdued">月推定送信通数: <strong>約 {sendEstimate.estimatedSends}</strong> 通</Text>
                 </BlockStack>
               </Box>
 
-              <FormLayout.Group>
-                <TextField label="発送後の遅延日数" type="number" min={1} max={90} autoComplete="off" value={String(form.delay_days)} onChange={(v) => setForm({ ...form, delay_days: Number(v) || 14 })} suffix="日" />
-                <TextField label="Reply-To メール" type="email" autoComplete="off" value={form.reply_to} onChange={(v) => setForm({ ...form, reply_to: v })} />
-              </FormLayout.Group>
+              <Divider />
 
-              <TextField label="件名" autoComplete="off" value={form.subject} onChange={(v) => setForm({ ...form, subject: v })} helpText="30 字以内推奨" maxLength={80} showCharacterCount />
-              <TextField
-                label="本文 (Liquid テンプレート)"
-                autoComplete="off"
-                multiline={10}
-                value={form.body_template}
-                onChange={(v) => setForm({ ...form, body_template: v })}
-                helpText="{{ customer.first_name }} / {{ review_url }} / {{ order.name }} 等の変数が使えます。プレビューは右側に即時表示"
-              />
-              <TextField label="インセンティブ文言 (任意)" autoComplete="off" value={form.incentive_text} onChange={(v) => setForm({ ...form, incentive_text: v })} helpText="例: 投稿者全員に次回 500 円 OFF クーポン" />
+              {/* メール本体設定 */}
+              <FormLayout>
+                <TextField label="管理画面用ラベル (自動入力)" autoComplete="off" value={meta.target_label} onChange={(v) => setMeta({ ...meta, target_label: v })} helpText="保存時の一覧表示名" />
+                <FormLayout.Group>
+                  <TextField label="発送後の遅延日数" type="number" min={1} max={90} autoComplete="off" value={String(meta.delay_days)} onChange={(v) => setMeta({ ...meta, delay_days: Number(v) || 14 })} suffix="日" />
+                  <TextField label="Reply-To" type="email" autoComplete="off" value={meta.reply_to} onChange={(v) => setMeta({ ...meta, reply_to: v })} />
+                </FormLayout.Group>
+                <TextField label="件名" autoComplete="off" value={meta.subject} onChange={(v) => setMeta({ ...meta, subject: v })} maxLength={80} showCharacterCount />
+                <TextField label="本文 (Liquid)" autoComplete="off" multiline={8} value={meta.body_template} onChange={(v) => setMeta({ ...meta, body_template: v })} helpText="{{ customer.first_name }} / {{ review_url }} 等" />
+                <TextField label="インセンティブ文言 (任意)" autoComplete="off" value={meta.incentive_text} onChange={(v) => setMeta({ ...meta, incentive_text: v })} />
+                <Checkbox label="この設定を有効化する" checked={meta.enabled} onChange={(v) => setMeta({ ...meta, enabled: v })} />
+              </FormLayout>
+            </BlockStack>
 
-              <Checkbox label="この設定を有効化する (即時 Shopify Flow から参照される)" checked={form.enabled} onChange={(v) => setForm({ ...form, enabled: v })} />
-            </FormLayout>
-
-            {/* 右カラム: リアルタイムプレビュー */}
+            {/* 右カラム: ライブプレビュー */}
             <BlockStack gap="300">
               <Text as="h3" variant="headingMd">📧 メールプレビュー (お客様視点)</Text>
-              <Text as="p" variant="bodySm" tone="subdued">
-                サンプルデータ ({"{{ customer.first_name }}"} → 「山田」、{"{{ review_url }}"} → 実際の token URL) で置換されたプレビューです。
-              </Text>
+              <Text as="p" variant="bodySm" tone="subdued">サンプル変数で置換した実メール表示。</Text>
 
               <Card padding="0">
-                {/* Mail header bar */}
                 <Box background="bg-fill-secondary" padding="300">
                   <BlockStack gap="100">
-                    <InlineStack gap="200" align="space-between">
-                      <Text as="span" variant="bodyXs" tone="subdued" fontWeight="semibold">差出人:</Text>
-                      <Text as="span" variant="bodyXs">ASTROMEDA &lt;noreply@mining-base.co.jp&gt;</Text>
-                    </InlineStack>
-                    <InlineStack gap="200" align="space-between">
-                      <Text as="span" variant="bodyXs" tone="subdued" fontWeight="semibold">宛先:</Text>
-                      <Text as="span" variant="bodyXs">yamada@example.com (山田 太郎 様)</Text>
-                    </InlineStack>
-                    <InlineStack gap="200" align="space-between">
-                      <Text as="span" variant="bodyXs" tone="subdued" fontWeight="semibold">Reply-To:</Text>
-                      <Text as="span" variant="bodyXs">{form.reply_to || "(未設定)"}</Text>
-                    </InlineStack>
+                    <InlineStack gap="200" align="space-between"><Text as="span" variant="bodyXs" tone="subdued" fontWeight="semibold">差出人:</Text><Text as="span" variant="bodyXs">ASTROMEDA &lt;noreply@mining-base.co.jp&gt;</Text></InlineStack>
+                    <InlineStack gap="200" align="space-between"><Text as="span" variant="bodyXs" tone="subdued" fontWeight="semibold">宛先:</Text><Text as="span" variant="bodyXs">yamada@example.com (山田 太郎 様)</Text></InlineStack>
+                    <InlineStack gap="200" align="space-between"><Text as="span" variant="bodyXs" tone="subdued" fontWeight="semibold">Reply-To:</Text><Text as="span" variant="bodyXs">{meta.reply_to || "(未設定)"}</Text></InlineStack>
                   </BlockStack>
                 </Box>
                 <Divider />
-                {/* Subject */}
                 <Box padding="300" background="bg-fill">
                   <Text as="h2" variant="headingMd">{previewSubject || "(件名未入力)"}</Text>
                 </Box>
                 <Divider />
-                {/* Body with ASTROMEDA branded header */}
                 <Box padding="0">
                   <div style={{ background: "#0d9488", padding: 18, textAlign: "center" }}>
                     <span style={{ color: "#fff", fontSize: 18, fontWeight: 700, letterSpacing: 2 }}>ASTROMEDA</span>
                   </div>
                   <Box padding="500">
-                    <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: '-apple-system, "Hiragino Sans", "Yu Gothic UI", sans-serif', fontSize: 14, lineHeight: 1.7, margin: 0, color: "#0f172a" }}>
-                      {previewBody || "(本文未入力)"}
-                    </pre>
-                    {form.incentive_text ? (
-                      <Box padding="300" background="bg-surface-success" borderRadius="200">
-                        <Text as="p" variant="bodySm">🎁 {form.incentive_text}</Text>
-                      </Box>
+                    <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: '-apple-system, "Hiragino Sans", "Yu Gothic UI", sans-serif', fontSize: 14, lineHeight: 1.7, margin: 0, color: "#0f172a" }}>{previewBody || "(本文未入力)"}</pre>
+                    {meta.incentive_text ? (
+                      <Box padding="300" background="bg-surface-success" borderRadius="200"><Text as="p" variant="bodySm">🎁 {meta.incentive_text}</Text></Box>
                     ) : null}
                   </Box>
                 </Box>
               </Card>
 
-              <Text as="p" variant="bodyXs" tone="subdued">
-                ⚠️ 本物のメールは Shopify Email で配信されます。実際のレイアウト・フォントは Shopify Email Template Editor で確認できます。
-              </Text>
+              <Box padding="300" background="bg-surface-secondary" borderRadius="200">
+                <BlockStack gap="100">
+                  <Text as="h4" variant="headingSm">🔍 内部処理 (技術参考)</Text>
+                  <Text as="p" variant="bodyXs" tone="subdued">target_type: <code>{resolved.target_type}</code></Text>
+                  <Text as="p" variant="bodyXs" tone="subdued">target_handle: <code>{resolved.target_handle || "(未確定)"}</code></Text>
+                </BlockStack>
+              </Box>
             </BlockStack>
           </InlineGrid>
         </Modal.Section>
