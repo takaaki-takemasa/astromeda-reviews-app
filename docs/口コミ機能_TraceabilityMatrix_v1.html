@@ -333,11 +333,11 @@
           <tr><td class="id-cell">A-01</td><td class="phase-A">A</td><td>キックオフ・要件最終確認</td><td><span class="spec-tag">§1 原則</span> <span class="spec-tag">§2 ペルソナ</span></td><td><span class="audit-tag ceo">M-A4</span></td><td></td></tr>
           <tr><td class="id-cell">A-02</td><td class="phase-A">A</td><td>GitHub repo 作成</td><td>—</td><td>—</td><td></td></tr>
           <tr><td class="id-cell">A-03</td><td class="phase-A">A</td><td>Shopify Remix template 初期化</td><td><span class="spec-tag">§1 Polaris-First</span></td><td><span class="audit-tag cdo">M-A1</span></td><td></td></tr>
-          <tr><td class="id-cell">A-04</td><td class="phase-A">A</td><td>Fly.io account + CLI</td><td><span class="spec-tag">§11 SLO</span></td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
-          <tr><td class="id-cell">A-05</td><td class="phase-A">A</td><td>fly.toml 構成 + Hello World デプロイ</td><td><span class="spec-tag">§11 Performance</span></td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
-          <tr><td class="id-cell">A-06</td><td class="phase-A">A</td><td>app URL を Fly.io に切替</td><td>—</td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+          <tr><td class="id-cell">A-04</td><td class="phase-A">A</td><td>Vercel Project Import (CEO 既存アカウント・GitHub repo 連携)</td><td><span class="spec-tag">§11 SLO</span></td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+          <tr><td class="id-cell">A-05</td><td class="phase-A">A</td><td>vercel.json 構成 + 初回 Hello World deploy (auto)</td><td><span class="spec-tag">§11 Performance</span></td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
+          <tr><td class="id-cell">A-06</td><td class="phase-A">A</td><td>application_url を astromeda-reviews-app.vercel.app に切替 (Dev Dashboard)</td><td>—</td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
           <tr><td class="id-cell">A-07</td><td class="phase-A">A</td><td>OAuth インストール検証</td><td><span class="spec-tag">§9 Security</span></td><td><span class="audit-tag cto">M-A2</span></td><td></td></tr>
-          <tr><td class="id-cell">A-08</td><td class="phase-A">A</td><td>GitHub Actions + Fly token</td><td>—</td><td>—</td><td></td></tr>
+          <tr><td class="id-cell">A-08</td><td class="phase-A">A</td><td>Vercel Environment Variables (Shopify secrets + Upstash Redis credentials)</td><td>—</td><td>—</td><td></td></tr>
           <tr><td class="id-cell">A-09</td><td class="phase-A">A</td><td>README + ADR-001</td><td><span class="spec-tag">§1 原則</span></td><td>—</td><td></td></tr>
 
           <!-- Phase B -->
@@ -469,7 +469,7 @@
           <!-- Phase M -->
           <tr><td class="id-cell">M-01</td><td class="phase-M">M</td><td>運用マニュアル</td><td><span class="spec-tag">§2 Persona</span></td><td>—</td><td></td></tr>
           <tr><td class="id-cell">M-02</td><td class="phase-M">M</td><td>障害対応 Runbook</td><td><span class="spec-tag">§11 SLO</span></td><td>—</td><td></td></tr>
-          <tr><td class="id-cell">M-03</td><td class="phase-M">M</td><td>Fly metrics + Sentry alert</td><td><span class="spec-tag">§11 SLO/SLI</span></td><td>—</td><td></td></tr>
+          <tr><td class="id-cell">M-03</td><td class="phase-M">M</td><td>Vercel Observability + Sentry alert</td><td><span class="spec-tag">§11 SLO/SLI</span></td><td>—</td><td></td></tr>
           <tr><td class="id-cell">M-04</td><td class="phase-M">M</td><td>バックアップ手順書</td><td>—</td><td>—</td><td></td></tr>
           <tr><td class="id-cell">M-05</td><td class="phase-M">M</td><td>A11y 監査 (M-A1 に統合)</td><td><span class="spec-tag">§9 A11y</span></td><td>—</td><td></td></tr>
           <tr><td class="id-cell">M-06</td><td class="phase-M">M</td><td>セキュリティ確認 (M-A2 に統合)</td><td><span class="spec-tag">§9 Security</span></td><td>—</td><td></td></tr>
@@ -574,7 +574,7 @@
             <li>HMAC 不正 webhook で 401 確認</li>
             <li>Rate Limit 超過で 429 確認</li>
             <li>Sentry でエラー発生 → 受信確認</li>
-            <li>Fly.io metrics 確認</li>
+            <li>Vercel Observability 確認</li>
           </ul>
           <div class="pass-criteria">
             <strong>Pass 基準:</strong><br>
@@ -735,9 +735,4 @@
   </section>
 
   <footer>
-    ASTROMEDA × Cowork ・ REV-EMB-2026-Q2 ・ Traceability Matrix ・ Companion to Gantt v1.1 + UX/UI Design Spec v1.1 ・ Generated 2026-05-14
-  </footer>
-
-</div>
-</body>
-</html>
+    ASTROMEDA × Cowork

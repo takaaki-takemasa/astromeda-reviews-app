@@ -913,7 +913,7 @@
 
         <!-- Backend services -->
         <rect x="40" y="280" width="1100" height="60" rx="8" fill="#1a1a1a"/>
-        <text x="60" y="304" font-size="11" fill="#aee9d1" font-weight="700">BACKEND (Fly.io)</text>
+        <text x="60" y="304" font-size="11" fill="#aee9d1" font-weight="700">BACKEND (Vercel)</text>
         <g font-size="11" fill="#fff">
           <text x="60" y="324" font-weight="600">/api/admin/* (Embedded App API)</text>
           <text x="320" y="324" font-weight="600">/api/cron/process-queue (Email送信)</text>
@@ -1809,8 +1809,8 @@
       <table class="polaris-table">
         <thead><tr><th>指標</th><th>目標値 (SLO)</th><th>測定方法 (SLI)</th></tr></thead>
         <tbody>
-          <tr><td>API レスポンスタイム (p95)</td><td>&lt; 500ms</td><td>Fly.io metrics</td></tr>
-          <tr><td>サーバー稼働率</td><td>99.5% / 月</td><td>Fly.io health check</td></tr>
+          <tr><td>API レスポンスタイム (p95)</td><td>&lt; 500ms</td><td>Vercel Observability</td></tr>
+          <tr><td>サーバー稼働率</td><td>99.5% / 月</td><td>Vercel uptime ping</td></tr>
           <tr><td>メール送信成功率</td><td>≥ 99%</td><td>Shopify Flow run history (success/failed カウント)</td></tr>
           <tr><td>承認 → 公開反映時間</td><td>≤ 5 秒</td><td>e2e test</td></tr>
           <tr><td>投稿 → 管理画面表示</td><td>≤ 10 秒</td><td>e2e test</td></tr>

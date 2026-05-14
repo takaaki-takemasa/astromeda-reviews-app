@@ -9,7 +9,7 @@ client_id = ""
 # Embedded App 表示名 (Shopify Admin サイドバーに表示される)
 name = "astromeda-reviews"
 handle = "astromeda-reviews"
-application_url = "https://placeholder.fly.dev"
+application_url = "https://astromeda-reviews-app.vercel.app"
 embedded = true
 
 [build]
@@ -27,4 +27,4 @@ include_config_on_deploy = true
 #                            astromeda_gift_token / astromeda_audit_log の CRUD
 # - read/write_metaobject_definitions: Metaobject 定義作成 (初回 setup)
 # - read/write_files: お客様アップロード写真を Shopify Files へ保存
-# - read_content: Storefront 表示連携時に Article/Page 参照 (将
+# - read_content: Storefront 表示連携時に Article/Pag
