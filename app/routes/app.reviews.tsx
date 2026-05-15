@@ -1208,10 +1208,6 @@ export default function ReviewsTab() {
       title="レビュー一覧"
       subtitle="行をクリックすると詳細とストアフロントプレビューを表示します"
       primaryAction={{ content: "新規レビューを作成", onAction: openCreate }}
-      secondaryActions={[
-        { content: "CSV を出力", onAction: () => { window.open("/app/reviews/export.csv", "_blank"); } },
-        { content: "CSV を取り込み", onAction: openImport },
-      ]}
       secondaryActions={
         tab === "pending" && selectedResources.length > 0
           ? [
@@ -1232,6 +1228,15 @@ export default function ReviewsTab() {
           {fetcher.data && !fetcher.data.ok && fetcher.data.intent !== "create" ? (
             <Banner tone="critical" title={fetcher.data.error || "一部の更新に失敗しました"} onDismiss={() => {}} />
           ) : null}
+
+          <InlineStack gap="200" align="end">
+            <Button onClick={() => window.open("/app/reviews/export.csv", "_blank")}>
+              CSV を出力
+            </Button>
+            <Button onClick={openImport}>
+              CSV を取り込み
+            </Button>
+          </InlineStack>
 
           <Card>
             <BlockStack gap="0">
