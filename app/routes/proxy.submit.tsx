@@ -1,5 +1,5 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
-import { useLoaderData, useActionData, Form, useNavigation } from "@remix-run/react";
+import { useLoaderData, useActionData, useNavigation } from "@remix-run/react";
 import { authenticate } from "../shopify.server";
 import { enforceRateLimit, RATE_LIMITS } from "../lib/rate-limit";
 
@@ -214,7 +214,7 @@ export default function PublicReviewSubmit() {
         {token.customer_name || "お客様"} へ・3 分でご感想をお寄せください。
       </p>
 
-      <Form method="post" action="/apps/reviews-1/submit" reloadDocument>
+      <form method="post" action="/apps/reviews-1/submit">
         <input type="hidden" name="token" value={token.token} />
 
         <label style={fieldLabel}>評価 (必須)</label>
@@ -243,7 +243,7 @@ export default function PublicReviewSubmit() {
         <button type="submit" disabled={submitting} style={{ ...cta, opacity: submitting ? 0.6 : 1, cursor: submitting ? "wait" : "pointer", border: "none", width: "100%" }}>
           {submitting ? "送信中..." : "レビューを投稿する"}
         </button>
-      </Form>
+      </form>
 
       <p style={{ marginTop: 24, fontSize: 12, color: "#94a3b8", lineHeight: 1.6 }}>
         投稿いただいたレビューは ASTROMEDA で確認後、公開いたします。
