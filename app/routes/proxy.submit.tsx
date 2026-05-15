@@ -18,8 +18,8 @@ import { enforceRateLimit, RATE_LIMITS } from "../lib/rate-limit";
  */
 
 const FIND_TOKEN_QUERY = `#graphql
-  query FindToken($handle: String!) {
-    metaobjects(type: "astromeda_review_token", first: 5, query: $handle) {
+  query FindAllTokens {
+    metaobjects(type: "astromeda_review_token", first: 250) {
       edges { node { id handle fields { key value } } }
     }
   }
@@ -62,12 +62,15 @@ function isValidUuid(s: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 }
 
-async function findTokenByValue(admin: { graphql: (q: string, opts?: { variables: Record<string, unknown> }) => Promise<Response> }, tokenValue: string): Promise<TokenData | null> {
-  const res = await admin.graphql(FIND_TOKEN_QUERY, { variables: { handle: `fields.token:"${tokenValue}"` } });
+async function findTokenByValue(admin: { graphql: (q: string, opts?: { variables?: Record<string, unknown> }) => Promise<Response> }, tokenValue: string): Promise<TokenData | null> {
+  // Shopify Metaobjects API does not support fields.<key>:"..." query syntax,
+  // so fetch all tokens (up to 250) and filter client-side.
+  const res = await admin.graphql(FIND_TOKEN_QUERY);
   const json = (await res.json()) as { data?: { metaobjects?: { edges: Array<{ node: { id: string; fields: Array<{ key: string; value: string }> } }> } } };
   const edges = json.data?.metaobjects?.edges ?? [];
-  if (edges.length === 0) return null;
-  const node = edges[0].node;
+  const match = edges.find((e) => e.node.fields.find((x) => x.key === "token")?.value === tokenValue);
+  if (!match) return null;
+  const node = match.node;
   return {
     id: node.id,
     token: f(node, "token"),
