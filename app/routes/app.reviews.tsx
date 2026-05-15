@@ -39,6 +39,12 @@ interface ProductRef {
   image_url: string | null;
 }
 
+interface PhotoSlot {
+  slot: number; // 1-6
+  file_id: string; // gid://shopify/MediaImage/...
+  url: string | null;
+}
+
 interface ReviewItem {
   id: string;
   handle: string;
@@ -56,6 +62,7 @@ interface ReviewItem {
   approved_by: string;
   created_at: string;
   product: ProductRef | null;
+  photos: PhotoSlot[];
 }
 
 interface GiftTokenInfo {
@@ -89,6 +96,7 @@ interface ActionResult {
   updated?: number;
   failed?: number;
   created?: number;
+  edited?: number;
   new_id?: string | null;
   detail?: ReviewDetail;
   intent?: string;
@@ -140,6 +148,29 @@ const CREATE_REVIEW_MUTATION = `#graphql
   }
 `;
 
+const EDIT_REVIEW_MUTATION = `#graphql
+  mutation EditReview($id: ID!, $fields: [MetaobjectFieldInput!]!) {
+    metaobjectUpdate(id: $id, metaobject: { fields: $fields }) {
+      metaobject { id }
+      userErrors { field message code }
+    }
+  }
+`;
+
+const FILE_CREATE_MUTATION = `#graphql
+  mutation CreatePhoto($files: [FileCreateInput!]!) {
+    fileCreate(files: $files) {
+      files {
+        ... on MediaImage {
+          id
+          image { url altText width height }
+        }
+      }
+      userErrors { field message code }
+    }
+  }
+`;
+
 const FETCH_TOKEN_QUERY = `#graphql
   query FetchToken($id: ID!) {
     metaobject(id: $id) {
@@ -176,10 +207,13 @@ function extractReview(edge: {
       key: string;
       value: string;
       reference?: {
+        // Product
         id?: string;
         title?: string;
         handle?: string;
         featuredImage?: { url?: string; altText?: string };
+        // MediaImage
+        image?: { url?: string; altText?: string };
       } | null;
     }>;
   };
@@ -195,6 +229,18 @@ function extractReview(edge: {
       handle: ref.handle ?? "",
       image_url: ref.featuredImage?.url ?? null,
     };
+  }
+  // Extract photo_1..photo_6 references
+  const photos: PhotoSlot[] = [];
+  for (let i = 1; i <= 6; i++) {
+    const pf = node.fields.find((f) => f.key === `photo_${i}`);
+    if (pf?.value && pf?.reference?.id) {
+      photos.push({
+        slot: i,
+        file_id: pf.reference.id,
+        url: pf.reference.image?.url ?? null,
+      });
+    }
   }
   return {
     id: node.id,
@@ -213,11 +259,12 @@ function extractReview(edge: {
     approved_by: fieldVal(node, "approved_by"),
     created_at: node.updatedAt,
     product,
+    photos,
   };
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const url = new URL(request.url);
   const tab = (url.searchParams.get("tab") as ReviewStatus | null) ?? "pending";
   const cursor = url.searchParams.get("cursor");
@@ -239,10 +286,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const edges = data.data?.metaobjects?.edges ?? [];
   const reviews: ReviewItem[] = edges.map(extractReview);
 
+  // Extract shop slug (strip .myshopify.com) for admin URLs
+  const shopFull = (session.shop ?? "").toString();
+  const shop = shopFull.replace(/\.myshopify\.com$/, "");
+
   return {
     tab,
     reviews,
     pageInfo: data.data?.metaobjects?.pageInfo ?? { hasNextPage: false, endCursor: null },
+    shop,
   };
 };
 
@@ -270,6 +322,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                   id title handle
                   featuredImage { url altText }
                 }
+                ... on MediaImage {
+                  id
+                  image { url altText }
+                }
               }
             }
           }
@@ -277,7 +333,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       { variables: { id: reviewId } },
     );
     const rJson = (await reviewRes.json()) as {
-      data?: { metaobject?: { id: string; handle: string; updatedAt: string; fields: Array<{ key: string; value: string; reference?: { id?: string; title?: string; handle?: string; featuredImage?: { url?: string; altText?: string } } | null }> } };
+      data?: { metaobject?: { id: string; handle: string; updatedAt: string; fields: Array<{ key: string; value: string; reference?: { id?: string; title?: string; handle?: string; featuredImage?: { url?: string; altText?: string }; image?: { url?: string; altText?: string } } | null }> } };
     };
     const rNode = rJson.data?.metaobject;
     if (!rNode) return { ok: false, error: "レビューが見つかりません", intent };
@@ -331,6 +387,127 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
 
     return { ok: true, intent, detail: { review, gift_token, order } };
+  }
+
+  // ─── intent: edit (admin edits existing review fields) ───
+  if (intent === "edit") {
+    const reviewId = String(formData.get("reviewId") || "");
+    if (!reviewId.startsWith("gid://shopify/Metaobject/")) {
+      return { ok: false, error: "review id が不正です", intent };
+    }
+    const rating = Number(formData.get("rating") || 0);
+    const title = String(formData.get("title") || "").trim().slice(0, 60);
+    const body = String(formData.get("body") || "").trim().slice(0, 1000);
+    const reviewer_name = String(formData.get("reviewer_name") || "").trim().slice(0, 40);
+    const reviewer_email = String(formData.get("reviewer_email") || "").trim().slice(0, 200);
+
+    if (rating < 1 || rating > 5) return { ok: false, error: "評価を 1〜5 で選択してください", intent };
+    if (!title) return { ok: false, error: "タイトルを入力してください", intent };
+    if (body.length < 10) return { ok: false, error: "本文を 10 文字以上で入力してください", intent };
+    if (!reviewer_name) return { ok: false, error: "表示名を入力してください", intent };
+
+    const fields = [
+      { key: "rating", value: String(rating) },
+      { key: "title", value: title },
+      { key: "body", value: body },
+      { key: "reviewer_name", value: reviewer_name },
+      { key: "reviewer_email", value: reviewer_email },
+    ];
+    const editRes = await admin.graphql(EDIT_REVIEW_MUTATION, {
+      variables: { id: reviewId, fields },
+    });
+    const editJson = (await editRes.json()) as {
+      data?: { metaobjectUpdate?: { userErrors: Array<{ field: string[]; message: string; code: string }> } };
+    };
+    const eErrs = editJson.data?.metaobjectUpdate?.userErrors ?? [];
+    if (eErrs.length > 0) {
+      console.log("[app.reviews/edit] userErrors", JSON.stringify(eErrs));
+      return { ok: false, error: `保存失敗: ${eErrs.map((e) => e.message).join(", ")}`, intent };
+    }
+    await appendAuditLogSafe({
+      admin, actor: session.shop, action: "review.edit",
+      resource_id: reviewId, resource_type: "astromeda_review",
+      request, metadata: { rating, title_len: title.length, body_len: body.length },
+    });
+    return { ok: true, intent, edited: 1 };
+  }
+
+  // ─── intent: add_photo (admin pastes image URL → fileCreate → set photo_N) ───
+  if (intent === "add_photo") {
+    const reviewId = String(formData.get("reviewId") || "");
+    const slot = Number(formData.get("slot") || 0);
+    const url = String(formData.get("url") || "").trim();
+
+    if (!reviewId.startsWith("gid://shopify/Metaobject/")) return { ok: false, error: "review id が不正です", intent };
+    if (slot < 1 || slot > 6) return { ok: false, error: "slot は 1〜6 を指定してください", intent };
+    if (!/^https?:\/\//.test(url)) return { ok: false, error: "有効な http(s):// URL を入力してください", intent };
+
+    const fcRes = await admin.graphql(FILE_CREATE_MUTATION, {
+      variables: {
+        files: [
+          {
+            contentType: "IMAGE",
+            originalSource: url,
+            alt: `astromeda review photo ${slot}`,
+          },
+        ],
+      },
+    });
+    const fcJson = (await fcRes.json()) as {
+      data?: { fileCreate?: { files?: Array<{ id?: string }>; userErrors: Array<{ field: string[]; message: string; code: string }> } };
+    };
+    const fErrs = fcJson.data?.fileCreate?.userErrors ?? [];
+    if (fErrs.length > 0) {
+      console.log("[app.reviews/add_photo] fileCreate userErrors", JSON.stringify(fErrs));
+      return { ok: false, error: `画像登録失敗: ${fErrs.map((e) => e.message).join(", ")}`, intent };
+    }
+    const fileId = fcJson.data?.fileCreate?.files?.[0]?.id;
+    if (!fileId) return { ok: false, error: "画像登録失敗 (file id 取得不可)", intent };
+
+    const upRes = await admin.graphql(EDIT_REVIEW_MUTATION, {
+      variables: { id: reviewId, fields: [{ key: `photo_${slot}`, value: fileId }] },
+    });
+    const upJson = (await upRes.json()) as {
+      data?: { metaobjectUpdate?: { userErrors: Array<{ field: string[]; message: string; code: string }> } };
+    };
+    const uErrs = upJson.data?.metaobjectUpdate?.userErrors ?? [];
+    if (uErrs.length > 0) {
+      console.log("[app.reviews/add_photo] update userErrors", JSON.stringify(uErrs));
+      return { ok: false, error: `スロット保存失敗: ${uErrs.map((e) => e.message).join(", ")}`, intent };
+    }
+    await appendAuditLogSafe({
+      admin, actor: session.shop, action: "review.add_photo",
+      resource_id: reviewId, resource_type: "astromeda_review",
+      request, metadata: { slot, file_id: fileId, source_url: url },
+    });
+    return { ok: true, intent, edited: 1 };
+  }
+
+  // ─── intent: remove_photo (clear photo_N field) ───
+  if (intent === "remove_photo") {
+    const reviewId = String(formData.get("reviewId") || "");
+    const slot = Number(formData.get("slot") || 0);
+    if (!reviewId.startsWith("gid://shopify/Metaobject/")) return { ok: false, error: "review id が不正です", intent };
+    if (slot < 1 || slot > 6) return { ok: false, error: "slot は 1〜6 を指定してください", intent };
+
+    // Clear by setting value to empty string (Shopify accepts this for file_reference clearing)
+    const upRes = await admin.graphql(EDIT_REVIEW_MUTATION, {
+      variables: { id: reviewId, fields: [{ key: `photo_${slot}`, value: "" }] },
+    });
+    const upJson = (await upRes.json()) as {
+      data?: { metaobjectUpdate?: { userErrors: Array<{ field: string[]; message: string; code: string }> } };
+    };
+    const uErrs = upJson.data?.metaobjectUpdate?.userErrors ?? [];
+    if (uErrs.length > 0) {
+      console.log("[app.reviews/remove_photo] userErrors", JSON.stringify(uErrs));
+      return { ok: false, error: `削除失敗: ${uErrs.map((e) => e.message).join(", ")}`, intent };
+    }
+    await appendAuditLogSafe({
+      admin, actor: session.shop, action: "review.remove_photo",
+      resource_id: reviewId, resource_type: "astromeda_review",
+      request, metadata: { slot },
+    });
+    return { ok: true, intent, edited: 1 };
   }
 
   // ─── intent: create (admin-authored review) ───
@@ -484,7 +661,7 @@ function ReviewStorefrontPreview({ review }: { review: ReviewItem }) {
 // Main component
 // ─────────────────────────────────────────────
 export default function ReviewsTab() {
-  const { tab, reviews, pageInfo } = useLoaderData<typeof loader>();
+  const { tab, reviews, pageInfo, shop } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<ActionResult>();
   const detailFetcher = useFetcher<ActionResult>();
   const [, setSearchParams] = useSearchParams();
@@ -576,12 +753,28 @@ export default function ReviewsTab() {
     !!formName.trim() &&
     fetcher.state === "idle";
 
+  // ─── Edit-mode state (in detail modal) ───
+  const [editMode, setEditMode] = useState(false);
+  const [editRating, setEditRating] = useState("5");
+  const [editTitle, setEditTitle] = useState("");
+  const [editBody, setEditBody] = useState("");
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [photoUrlInputs, setPhotoUrlInputs] = useState<Record<number, string>>({});
+
   // ─── Detail modal state ───
   const [detailReview, setDetailReview] = useState<ReviewItem | null>(null);
 
   const openDetail = useCallback(
     (review: ReviewItem) => {
       setDetailReview(review);
+      setEditMode(false);
+      setEditRating(String(review.rating));
+      setEditTitle(review.title);
+      setEditBody(review.body);
+      setEditName(review.reviewer_name);
+      setEditEmail(review.reviewer_email);
+      setPhotoUrlInputs({});
       const fd = new FormData();
       fd.set("intent", "fetch_detail");
       fd.set("reviewId", review.id);
@@ -616,6 +809,86 @@ export default function ReviewsTab() {
       setDetailReview(null);
     }
   }, [fetcher.state, fetcher.data, detailReview]);
+
+  // Refresh detail extras after edit/add_photo/remove_photo
+  useEffect(() => {
+    if (
+      fetcher.state === "idle" &&
+      fetcher.data?.ok &&
+      (fetcher.data?.intent === "edit" ||
+        fetcher.data?.intent === "add_photo" ||
+        fetcher.data?.intent === "remove_photo") &&
+      detailReview
+    ) {
+      // re-fetch detail to refresh photo URLs + field values
+      const fd = new FormData();
+      fd.set("intent", "fetch_detail");
+      fd.set("reviewId", detailReview.id);
+      detailFetcher.submit(fd, { method: "post" });
+      if (fetcher.data?.intent === "edit") setEditMode(false);
+      if (fetcher.data?.intent === "add_photo") setPhotoUrlInputs({});
+    }
+  }, [fetcher.state, fetcher.data, detailReview, detailFetcher]);
+
+  // Submit edit
+  const submitEdit = useCallback(() => {
+    if (!detailReview) return;
+    const fd = new FormData();
+    fd.set("intent", "edit");
+    fd.set("reviewId", detailReview.id);
+    fd.set("rating", editRating);
+    fd.set("title", editTitle);
+    fd.set("body", editBody);
+    fd.set("reviewer_name", editName);
+    fd.set("reviewer_email", editEmail);
+    fetcher.submit(fd, { method: "post" });
+  }, [detailReview, editRating, editTitle, editBody, editName, editEmail, fetcher]);
+
+  const canSubmitEdit =
+    !!detailReview &&
+    !!editTitle.trim() &&
+    editBody.trim().length >= 10 &&
+    !!editName.trim() &&
+    fetcher.state === "idle";
+
+  const cancelEdit = useCallback(() => {
+    if (!detailReview) return;
+    setEditMode(false);
+    setEditRating(String(detailReview.rating));
+    setEditTitle(detailReview.title);
+    setEditBody(detailReview.body);
+    setEditName(detailReview.reviewer_name);
+    setEditEmail(detailReview.reviewer_email);
+  }, [detailReview]);
+
+  // Add photo
+  const addPhoto = useCallback(
+    (slot: number) => {
+      if (!detailReview) return;
+      const url = (photoUrlInputs[slot] || "").trim();
+      if (!url) return;
+      const fd = new FormData();
+      fd.set("intent", "add_photo");
+      fd.set("reviewId", detailReview.id);
+      fd.set("slot", String(slot));
+      fd.set("url", url);
+      fetcher.submit(fd, { method: "post" });
+    },
+    [detailReview, photoUrlInputs, fetcher],
+  );
+
+  // Remove photo
+  const removePhoto = useCallback(
+    (slot: number) => {
+      if (!detailReview) return;
+      const fd = new FormData();
+      fd.set("intent", "remove_photo");
+      fd.set("reviewId", detailReview.id);
+      fd.set("slot", String(slot));
+      fetcher.submit(fd, { method: "post" });
+    },
+    [detailReview, fetcher],
+  );
 
   const detailExtras = detailFetcher.data?.detail;
   const detailLoading = detailFetcher.state === "submitting" || detailFetcher.state === "loading";
@@ -808,7 +1081,10 @@ export default function ReviewsTab() {
                         <Text as="span" variant="bodyMd" fontWeight="bold">{detailReview.product.title}</Text>
                         <Text as="span" variant="bodySm" tone="subdued">{detailReview.product.id}</Text>
                         <InlineStack gap="300">
-                          <Link url={`shopify://admin/products/${detailReview.product.id.split("/").pop()}`} target="_top">
+                          <Link
+                            url={`https://admin.shopify.com/store/${shop}/products/${detailReview.product.id.split("/").pop()}`}
+                            external
+                          >
                             管理画面で開く
                           </Link>
                           {detailReview.product.handle ? (
@@ -877,7 +1153,7 @@ export default function ReviewsTab() {
                       <Text as="h4" variant="headingXs">✓ 認証購入元の注文</Text>
                       <InlineStack gap="200">
                         <Box minWidth="100px"><Text as="span" tone="subdued" variant="bodySm">注文番号</Text></Box>
-                        <Link url={`shopify://admin/orders/${detailExtras.order.id.split("/").pop()}`} target="_top">{detailExtras.order.name}</Link>
+                        <Link url={`https://admin.shopify.com/store/${shop}/orders/${detailExtras.order.id.split("/").pop()}`} external>{detailExtras.order.name}</Link>
                       </InlineStack>
                       <InlineStack gap="200">
                         <Box minWidth="100px"><Text as="span" tone="subdued" variant="bodySm">購入者</Text></Box>
@@ -901,28 +1177,134 @@ export default function ReviewsTab() {
                 </BlockStack>
               </Card>
 
-              {/* ── レビュー本文 (全文) ── */}
+              {/* ── レビュー本文 (全文) — 編集モード対応 ── */}
               <Card>
                 <BlockStack gap="300">
-                  <InlineStack align="space-between">
-                    <Text as="h3" variant="headingSm">レビュー全文</Text>
-                    {statusBadge(detailReview.status)}
+                  <InlineStack align="space-between" blockAlign="center">
+                    <Text as="h3" variant="headingSm">{editMode ? "レビューを編集" : "レビュー全文"}</Text>
+                    <InlineStack gap="200" blockAlign="center">
+                      {statusBadge(detailReview.status)}
+                      {!editMode ? (
+                        <Button size="slim" onClick={() => setEditMode(true)}>編集する</Button>
+                      ) : null}
+                    </InlineStack>
                   </InlineStack>
-                  <BlockStack gap="200">
-                    <Text as="span" variant="headingMd">
-                      <span style={{ color: "#0d9488" }}>{"★".repeat(detailReview.rating)}</span>
-                      <span style={{ color: "#d1d5db" }}>{"★".repeat(Math.max(0, 5 - detailReview.rating))}</span>
-                      <span style={{ marginLeft: 8, fontSize: 14, color: "#6b7280" }}>({detailReview.rating} / 5)</span>
-                    </Text>
-                    <Text as="h4" variant="headingMd">{detailReview.title || "(タイトルなし)"}</Text>
-                    <div style={{ whiteSpace: "pre-wrap", padding: "8px 12px", background: "#f9fafb", borderRadius: 8, fontSize: 14, lineHeight: 1.8 }}>
-                      {detailReview.body}
-                    </div>
-                    <Text as="p" variant="bodySm" tone="subdued">
-                      投稿日時: {new Date(detailReview.created_at).toLocaleString("ja-JP")}
-                      {detailReview.approved_at ? ` / 承認日時: ${new Date(detailReview.approved_at).toLocaleString("ja-JP")} (by ${detailReview.approved_by})` : ""}
-                    </Text>
-                  </BlockStack>
+
+                  {editMode ? (
+                    <FormLayout>
+                      <Select
+                        label="評価 (★)"
+                        options={[
+                          { label: "★★★★★ (5)", value: "5" },
+                          { label: "★★★★ (4)", value: "4" },
+                          { label: "★★★ (3)", value: "3" },
+                          { label: "★★ (2)", value: "2" },
+                          { label: "★ (1)", value: "1" },
+                        ]}
+                        value={editRating}
+                        onChange={setEditRating}
+                      />
+                      <TextField
+                        label="タイトル"
+                        value={editTitle}
+                        onChange={setEditTitle}
+                        autoComplete="off"
+                        maxLength={60}
+                        showCharacterCount
+                        requiredIndicator
+                      />
+                      <TextField
+                        label="本文 (10 文字以上)"
+                        value={editBody}
+                        onChange={setEditBody}
+                        multiline={6}
+                        autoComplete="off"
+                        maxLength={1000}
+                        showCharacterCount
+                        requiredIndicator
+                      />
+                      <TextField
+                        label="表示名"
+                        value={editName}
+                        onChange={setEditName}
+                        autoComplete="off"
+                        maxLength={40}
+                        requiredIndicator
+                      />
+                      <TextField
+                        label="メールアドレス (非公開)"
+                        value={editEmail}
+                        onChange={setEditEmail}
+                        autoComplete="off"
+                        helpText="お客様の連絡先として保存。ストアフロントには表示されません。"
+                      />
+                      <InlineStack gap="200">
+                        <Button variant="primary" onClick={submitEdit} disabled={!canSubmitEdit} loading={fetcher.state === "submitting" && fetcher.data?.intent !== "add_photo" && fetcher.data?.intent !== "remove_photo"}>
+                          変更を保存
+                        </Button>
+                        <Button onClick={cancelEdit}>キャンセル</Button>
+                      </InlineStack>
+                    </FormLayout>
+                  ) : (
+                    <BlockStack gap="200">
+                      <Text as="span" variant="headingMd">
+                        <span style={{ color: "#0d9488" }}>{"★".repeat(detailReview.rating)}</span>
+                        <span style={{ color: "#d1d5db" }}>{"★".repeat(Math.max(0, 5 - detailReview.rating))}</span>
+                        <span style={{ marginLeft: 8, fontSize: 14, color: "#6b7280" }}>({detailReview.rating} / 5)</span>
+                      </Text>
+                      <Text as="h4" variant="headingMd">{detailReview.title || "(タイトルなし)"}</Text>
+                      <div style={{ whiteSpace: "pre-wrap", padding: "8px 12px", background: "#f9fafb", borderRadius: 8, fontSize: 14, lineHeight: 1.8 }}>
+                        {detailReview.body}
+                      </div>
+                      <Text as="p" variant="bodySm" tone="subdued">
+                        投稿日時: {new Date(detailReview.created_at).toLocaleString("ja-JP")}
+                        {detailReview.approved_at ? ` / 承認日時: ${new Date(detailReview.approved_at).toLocaleString("ja-JP")} (by ${detailReview.approved_by})` : ""}
+                      </Text>
+                    </BlockStack>
+                  )}
+                </BlockStack>
+              </Card>
+
+              {/* ── 写真 (photo_1 〜 photo_6) ── */}
+              <Card>
+                <BlockStack gap="300">
+                  <Text as="h3" variant="headingSm">写真 ({((detailExtras?.review?.photos)?.length ?? detailReview.photos.length)}/6)</Text>
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    画像 URL を貼り付けると Shopify Files に登録されレビューに紐付きます。空きスロット 6 枚まで。
+                  </Text>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+                    {[1, 2, 3, 4, 5, 6].map((slot) => {
+                      const photos = detailExtras?.review?.photos ?? detailReview.photos;
+                      const existing = photos.find((p) => p.slot === slot) ?? null;
+                      if (existing && existing.url) {
+                        return (
+                          <div key={slot} style={{ position: "relative", border: "1px solid #e5e7eb", borderRadius: 8, overflow: "hidden", background: "#f9fafb" }}>
+                            <img src={existing.url} alt={`photo ${slot}`} style={{ width: "100%", height: 140, objectFit: "cover", display: "block" }} />
+                            <div style={{ padding: "6px 8px", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11 }}>
+                              <span style={{ color: "#6b7280" }}>枠 {slot}</span>
+                              <Button size="micro" tone="critical" variant="plain" onClick={() => removePhoto(slot)}>削除</Button>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return (
+                        <div key={slot} style={{ border: "1px dashed #d1d5db", borderRadius: 8, padding: 12, background: "#f9fafb", display: "flex", flexDirection: "column", gap: 6, justifyContent: "space-between", minHeight: 180 }}>
+                          <Text as="span" variant="bodySm" tone="subdued">枠 {slot} (空き)</Text>
+                          <TextField
+                            label=""
+                            labelHidden
+                            value={photoUrlInputs[slot] || ""}
+                            onChange={(v) => setPhotoUrlInputs((m) => ({ ...m, [slot]: v }))}
+                            autoComplete="off"
+                            placeholder="https://..."
+                          />
+                          <Button size="slim" onClick={() => addPhoto(slot)} disabled={!photoUrlInputs[slot] || fetcher.state === "submitting"}>
+                            この URL から追加
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </BlockStack>
               </Card>
 
