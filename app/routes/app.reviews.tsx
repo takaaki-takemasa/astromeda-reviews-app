@@ -1357,27 +1357,23 @@ export default function ReviewsTab() {
                         <Text as="span" variant="bodyMd" fontWeight="bold">{detailReview.product.title}</Text>
                         <Text as="span" variant="bodySm" tone="subdued">{detailReview.product.id}</Text>
                         <InlineStack gap="300">
-                          <Button
-                            variant="plain"
-                            onClick={() => {
-                              const url = `https://admin.shopify.com/store/${shop}/products/${detailReview.product!.id.split("/").pop()}`;
-                              const w = (window.top || window).open(url, "_blank", "noopener,noreferrer");
-                              if (w) w.opener = null;
-                            }}
+                          <a
+                            href={`https://admin.shopify.com/store/${shop}/products/${detailReview.product.id.split("/").pop()}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ color: "#005bd3", textDecoration: "underline", fontSize: 14 }}
                           >
                             管理画面で開く
-                          </Button>
+                          </a>
                           {detailReview.product.handle ? (
-                            <Button
-                              variant="plain"
-                              onClick={() => {
-                                const url = `https://shop.mining-base.co.jp/products/${detailReview.product!.handle}`;
-                                const w = (window.top || window).open(url, "_blank", "noopener,noreferrer");
-                                if (w) w.opener = null;
-                              }}
+                            <a
+                              href={`https://shop.mining-base.co.jp/products/${detailReview.product.handle}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: "#005bd3", textDecoration: "underline", fontSize: 14 }}
                             >
                               ストアフロントで開く
-                            </Button>
+                            </a>
                           ) : null}
                         </InlineStack>
                       </BlockStack>
@@ -1473,11 +1469,12 @@ export default function ReviewsTab() {
                       <Text as="h4" variant="headingXs">✓ 認証購入元の注文</Text>
                       <InlineStack gap="200">
                         <Box minWidth="100px"><Text as="span" tone="subdued" variant="bodySm">注文番号</Text></Box>
-                        <Button variant="plain" onClick={() => {
-                          const url = `https://admin.shopify.com/store/${shop}/orders/${detailExtras.order!.id.split("/").pop()}`;
-                          const w = (window.top || window).open(url, "_blank", "noopener,noreferrer");
-                          if (w) w.opener = null;
-                        }}>{detailExtras.order.name}</Button>
+                        <a
+                          href={`https://admin.shopify.com/store/${shop}/orders/${detailExtras.order.id.split("/").pop()}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ color: "#005bd3", textDecoration: "underline" }}
+                        >{detailExtras.order.name}</a>
                       </InlineStack>
                       <InlineStack gap="200">
                         <Box minWidth="100px"><Text as="span" tone="subdued" variant="bodySm">購入者</Text></Box>
