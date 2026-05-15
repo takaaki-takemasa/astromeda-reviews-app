@@ -214,7 +214,7 @@ export default function PublicReviewSubmit() {
         {token.customer_name || "お客様"} へ・3 分でご感想をお寄せください。
       </p>
 
-      <Form method="post">
+      <Form method="post" action="/apps/reviews-1/submit" reloadDocument>
         <input type="hidden" name="token" value={token.token} />
 
         <label style={fieldLabel}>評価 (必須)</label>
