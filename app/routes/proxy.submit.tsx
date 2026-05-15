@@ -135,13 +135,24 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const body = String(formData.get("body") || "").trim().slice(0, 2000);
   const reviewer_name = String(formData.get("reviewer_name") || "").trim().slice(0, 40);
 
-  if (!isValidUuid(tokenValue)) return { ok: false, error: "リンクが不正です" };
-  if (rating < 1 || rating > 5) return { ok: false, error: "評価を選択してください" };
-  if (body.length < 20) return { ok: false, error: "本文を 20 文字以上で入力してください" };
+  console.log("[proxy.submit/action] received", JSON.stringify({
+    tokenValuePresent: !!tokenValue,
+    tokenValueLen: tokenValue.length,
+    tokenValueValid: isValidUuid(tokenValue),
+    rating,
+    titleLen: title.length,
+    bodyLen: body.length,
+    reviewer_nameLen: reviewer_name.length,
+  }));
+
+  if (!isValidUuid(tokenValue)) { console.log("[proxy.submit/action] reject: invalid uuid"); return { ok: false, error: "リンクが不正です" }; }
+  if (rating < 1 || rating > 5) { console.log("[proxy.submit/action] reject: bad rating", rating); return { ok: false, error: "評価を選択してください" }; }
+  if (body.length < 20) { console.log("[proxy.submit/action] reject: body too short", body.length); return { ok: false, error: "本文を 20 文字以上で入力してください" }; }
 
   const token = await findTokenByValue(admin, tokenValue);
   const v = validateToken(token);
-  if (!v.ok) return { ok: false, error: v.reason === "used" ? "このリンクは既に使用済です" : v.reason === "expired" ? "このリンクは有効期限切れです" : "このリンクは無効です" };
+  console.log("[proxy.submit/action] token validation", JSON.stringify({ found: !!token, valid: v.ok, reason: v.ok ? "ok" : v.reason }));
+  if (!v.ok) { console.log("[proxy.submit/action] reject: token", v.reason); return { ok: false, error: v.reason === "used" ? "このリンクは既に使用済です" : v.reason === "expired" ? "このリンクは有効期限切れです" : "このリンクは無効です" }; }
 
   // NG word detection (K-07): if matched, still save but with status=pending +
   // append note for CEO review (default behavior is already status=pending for all submissions)
@@ -168,7 +179,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   });
   const createJson = (await createRes.json()) as { data?: { metaobjectCreate?: { metaobject?: { id: string }; userErrors: Array<{ field: string[]; message: string }> } } };
   const errs = createJson.data?.metaobjectCreate?.userErrors ?? [];
-  if (errs.length > 0) return { ok: false, error: "投稿の保存に失敗しました。しばらく経って再度お試しください。" };
+  if (errs.length > 0) { console.log("[proxy.submit/action] metaobjectCreate userErrors", JSON.stringify(errs)); return { ok: false, error: "投稿の保存に失敗しました。しばらく経って再度お試しください。" }; }
+  console.log("[proxy.submit/action] review created", createJson.data?.metaobjectCreate?.metaobject?.id ?? "(no id)");
 
   // Mark token as used_at
   await admin.graphql(MARK_USED_MUTATION, {
@@ -188,21 +200,22 @@ export default function PublicReviewSubmit() {
   const nav = useNavigation();
   const submitting = nav.state === "submitting";
 
-  if (data.state !== "ready") {
-    return (
-      <PublicShell>
-        <h1 style={{ margin: 0, fontSize: 22 }}>レビュー投稿リンク</h1>
-        <p style={{ color: "#475569", lineHeight: 1.7 }}>{data.message}</p>
-        <a href="https://shop.mining-base.co.jp/" style={cta}>ASTROMEDA ストアへ戻る</a>
-      </PublicShell>
-    );
-  }
-
+  // Show success first so loader revalidation (which may invalidate token) doesn't hide success message
   if (result?.ok) {
     return (
       <PublicShell>
         <h1 style={{ margin: 0, fontSize: 22 }}>投稿完了</h1>
         <p style={{ color: "#475569", lineHeight: 1.7 }}>{result.message}</p>
+        <a href="https://shop.mining-base.co.jp/" style={cta}>ASTROMEDA ストアへ戻る</a>
+      </PublicShell>
+    );
+  }
+
+  if (data.state !== "ready") {
+    return (
+      <PublicShell>
+        <h1 style={{ margin: 0, fontSize: 22 }}>レビュー投稿リンク</h1>
+        <p style={{ color: "#475569", lineHeight: 1.7 }}>{data.message}</p>
         <a href="https://shop.mining-base.co.jp/" style={cta}>ASTROMEDA ストアへ戻る</a>
       </PublicShell>
     );
@@ -217,7 +230,7 @@ export default function PublicReviewSubmit() {
         {token.customer_name || "お客様"} へ・3 分でご感想をお寄せください。
       </p>
 
-      <form method="post" action="/apps/reviews-1/submit">
+      <form method="post" action={`/apps/reviews-1/submit?token=${encodeURIComponent(token.token)}`}>
         <input type="hidden" name="token" value={token.token} />
 
         <label style={fieldLabel}>評価 (必須)</label>
