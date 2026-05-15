@@ -1,4 +1,5 @@
 import {
+  DropZone,
   Page,
   Layout,
   Card,
@@ -153,6 +154,19 @@ const EDIT_REVIEW_MUTATION = `#graphql
     metaobjectUpdate(id: $id, metaobject: { fields: $fields }) {
       metaobject { id }
       userErrors { field message code }
+    }
+  }
+`;
+
+const STAGED_UPLOADS_CREATE_MUTATION = `#graphql
+  mutation StagedUploadsCreate($input: [StagedUploadInput!]!) {
+    stagedUploadsCreate(input: $input) {
+      stagedTargets {
+        url
+        resourceUrl
+        parameters { name value }
+      }
+      userErrors { field message }
     }
   }
 `;
@@ -432,22 +446,72 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return { ok: true, intent, edited: 1 };
   }
 
-  // ─── intent: add_photo (admin pastes image URL → fileCreate → set photo_N) ───
+  // ─── intent: add_photo (D&D file via stagedUploads OR URL paste → fileCreate → set photo_N) ───
   if (intent === "add_photo") {
     const reviewId = String(formData.get("reviewId") || "");
     const slot = Number(formData.get("slot") || 0);
     const url = String(formData.get("url") || "").trim();
+    const fileField = formData.get("file");
 
     if (!reviewId.startsWith("gid://shopify/Metaobject/")) return { ok: false, error: "review id が不正です", intent };
     if (slot < 1 || slot > 6) return { ok: false, error: "slot は 1〜6 を指定してください", intent };
-    if (!/^https?:\/\//.test(url)) return { ok: false, error: "有効な http(s):// URL を入力してください", intent };
+
+    let originalSource = "";
+
+    if (fileField && typeof fileField === "object" && "size" in (fileField as any) && (fileField as File).size > 0) {
+      const f = fileField as File;
+      if (f.size > 10 * 1024 * 1024) {
+        return { ok: false, error: "画像は 10 MB 以下にしてください", intent };
+      }
+      if (!/^image\//.test(f.type || "")) {
+        return { ok: false, error: "画像ファイル (PNG / JPG / GIF / WebP) を選択してください", intent };
+      }
+      const stagedRes = await admin.graphql(STAGED_UPLOADS_CREATE_MUTATION, {
+        variables: {
+          input: [
+            {
+              filename: f.name || `review-${slot}.jpg`,
+              mimeType: f.type || "image/jpeg",
+              httpMethod: "POST",
+              resource: "FILE",
+              fileSize: String(f.size),
+            },
+          ],
+        },
+      });
+      const stagedJson = (await stagedRes.json()) as {
+        data?: { stagedUploadsCreate?: { stagedTargets?: Array<{ url: string; resourceUrl: string; parameters: Array<{ name: string; value: string }> }>; userErrors: Array<{ field: string[]; message: string }> } };
+      };
+      const sErrs = stagedJson.data?.stagedUploadsCreate?.userErrors ?? [];
+      if (sErrs.length > 0) {
+        console.log("[app.reviews/add_photo] stagedUploadsCreate userErrors", JSON.stringify(sErrs));
+        return { ok: false, error: `staging 失敗: ${sErrs.map((e) => e.message).join(", ")}`, intent };
+      }
+      const target = stagedJson.data?.stagedUploadsCreate?.stagedTargets?.[0];
+      if (!target) return { ok: false, error: "staging target が取得できませんでした", intent };
+      const stagingFd = new FormData();
+      for (const p of target.parameters) stagingFd.append(p.name, p.value);
+      stagingFd.append("file", f, f.name || `review-${slot}.jpg`);
+      const uploadRes = await fetch(target.url, { method: "POST", body: stagingFd as any });
+      if (!uploadRes.ok) {
+        const errText = await uploadRes.text().catch(() => "");
+        console.log("[app.reviews/add_photo] staging upload failed", uploadRes.status, errText.slice(0, 500));
+        return { ok: false, error: `画像アップロード失敗 (HTTP ${uploadRes.status})`, intent };
+      }
+      originalSource = target.resourceUrl;
+    } else if (url) {
+      if (!/^https?:\/\//.test(url)) return { ok: false, error: "有効な http(s):// URL を入力してください", intent };
+      originalSource = url;
+    } else {
+      return { ok: false, error: "ファイルか URL のいずれかを指定してください", intent };
+    }
 
     const fcRes = await admin.graphql(FILE_CREATE_MUTATION, {
       variables: {
         files: [
           {
             contentType: "IMAGE",
-            originalSource: url,
+            originalSource,
             alt: `astromeda review photo ${slot}`,
           },
         ],
@@ -861,7 +925,20 @@ export default function ReviewsTab() {
     setEditEmail(detailReview.reviewer_email);
   }, [detailReview]);
 
-  // Add photo
+  // Add photo (D&D file)
+  const addPhotoFile = useCallback(
+    (slot: number, file: File) => {
+      if (!detailReview) return;
+      const fd = new FormData();
+      fd.set("intent", "add_photo");
+      fd.set("reviewId", detailReview.id);
+      fd.set("slot", String(slot));
+      fd.set("file", file, file.name);
+      fetcher.submit(fd, { method: "post", encType: "multipart/form-data" });
+    },
+    [detailReview, fetcher],
+  );
+  // Add photo (URL fallback)
   const addPhoto = useCallback(
     (slot: number) => {
       if (!detailReview) return;
@@ -1104,10 +1181,42 @@ export default function ReviewsTab() {
               {/* ── 投稿者情報 ── */}
               <Card>
                 <BlockStack gap="300">
-                  <InlineStack align="space-between">
+                  <InlineStack align="space-between" blockAlign="center">
                     <Text as="h3" variant="headingSm">投稿者プロフィール</Text>
-                    {sourceBadge(detailReview.source_type)}
+                    <InlineStack gap="200" blockAlign="center">
+                      {sourceBadge(detailReview.source_type)}
+                      <Button size="slim" onClick={() => setEditMode(true)} disabled={editMode}>
+                        編集する
+                      </Button>
+                    </InlineStack>
                   </InlineStack>
+                  {editMode ? (
+                    <FormLayout>
+                      <TextField
+                        label="表示名 (ストアフロントに公開)"
+                        value={editName}
+                        onChange={setEditName}
+                        autoComplete="off"
+                        maxLength={40}
+                        showCharacterCount
+                        requiredIndicator
+                        helpText="不適切な表現・下品な名前はここで修正してください。"
+                      />
+                      <TextField
+                        label="メール (非公開・連絡用)"
+                        value={editEmail}
+                        onChange={setEditEmail}
+                        autoComplete="off"
+                        helpText="ストアフロントには表示されません。"
+                      />
+                      <InlineStack gap="200">
+                        <Button variant="primary" onClick={submitEdit} disabled={!canSubmitEdit} loading={fetcher.state === "submitting" && fetcher.data?.intent !== "add_photo" && fetcher.data?.intent !== "remove_photo"}>
+                          変更を保存
+                        </Button>
+                        <Button onClick={cancelEdit}>キャンセル</Button>
+                      </InlineStack>
+                    </FormLayout>
+                  ) : (
                   <BlockStack gap="200">
                     <InlineStack gap="200">
                       <Box minWidth="100px"><Text as="span" tone="subdued" variant="bodySm">表示名</Text></Box>
@@ -1118,6 +1227,7 @@ export default function ReviewsTab() {
                       <Text as="span" variant="bodyMd">{detailReview.reviewer_email || "—"}</Text>
                     </InlineStack>
                   </BlockStack>
+                  )}
 
                   <Divider />
 
@@ -1270,7 +1380,7 @@ export default function ReviewsTab() {
                 <BlockStack gap="300">
                   <Text as="h3" variant="headingSm">写真 ({((detailExtras?.review?.photos)?.length ?? detailReview.photos.length)}/6)</Text>
                   <Text as="p" variant="bodySm" tone="subdued">
-                    画像 URL を貼り付けると Shopify Files に登録されレビューに紐付きます。空きスロット 6 枚まで。
+                    画像をドラッグ&ドロップまたは選択して追加できます。空きスロット 6 枚まで・10 MB 以下。
                   </Text>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
                     {[1, 2, 3, 4, 5, 6].map((slot) => {
@@ -1288,19 +1398,35 @@ export default function ReviewsTab() {
                         );
                       }
                       return (
-                        <div key={slot} style={{ border: "1px dashed #d1d5db", borderRadius: 8, padding: 12, background: "#f9fafb", display: "flex", flexDirection: "column", gap: 6, justifyContent: "space-between", minHeight: 180 }}>
+                        <div key={slot} style={{ border: "1px dashed #d1d5db", borderRadius: 8, padding: 8, background: "#f9fafb", display: "flex", flexDirection: "column", gap: 6, minHeight: 180 }}>
                           <Text as="span" variant="bodySm" tone="subdued">枠 {slot} (空き)</Text>
-                          <TextField
-                            label=""
-                            labelHidden
-                            value={photoUrlInputs[slot] || ""}
-                            onChange={(v) => setPhotoUrlInputs((m) => ({ ...m, [slot]: v }))}
-                            autoComplete="off"
-                            placeholder="https://..."
-                          />
-                          <Button size="slim" onClick={() => addPhoto(slot)} disabled={!photoUrlInputs[slot] || fetcher.state === "submitting"}>
-                            この URL から追加
-                          </Button>
+                          <DropZone
+                            accept="image/*"
+                            type="image"
+                            allowMultiple={false}
+                            onDrop={(_files, accepted) => {
+                              if (accepted && accepted[0]) addPhotoFile(slot, accepted[0]);
+                            }}
+                            disabled={fetcher.state === "submitting"}
+                          >
+                            <DropZone.FileUpload actionTitle="画像を選択" actionHint="またはドラッグ&ドロップ" />
+                          </DropZone>
+                          <details>
+                            <summary style={{ fontSize: 11, color: "#6b7280", cursor: "pointer" }}>URL で追加（上級者向け）</summary>
+                            <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 6 }}>
+                              <TextField
+                                label=""
+                                labelHidden
+                                value={photoUrlInputs[slot] || ""}
+                                onChange={(v) => setPhotoUrlInputs((m) => ({ ...m, [slot]: v }))}
+                                autoComplete="off"
+                                placeholder="https://..."
+                              />
+                              <Button size="slim" onClick={() => addPhoto(slot)} disabled={!photoUrlInputs[slot] || fetcher.state === "submitting"}>
+                                この URL から追加
+                              </Button>
+                            </div>
+                          </details>
                         </div>
                       );
                     })}
