@@ -1357,16 +1357,27 @@ export default function ReviewsTab() {
                         <Text as="span" variant="bodyMd" fontWeight="bold">{detailReview.product.title}</Text>
                         <Text as="span" variant="bodySm" tone="subdued">{detailReview.product.id}</Text>
                         <InlineStack gap="300">
-                          <Link
-                            url={`https://admin.shopify.com/store/${shop}/products/${detailReview.product.id.split("/").pop()}`}
-                            external
+                          <Button
+                            variant="plain"
+                            onClick={() => {
+                              const url = `https://admin.shopify.com/store/${shop}/products/${detailReview.product!.id.split("/").pop()}`;
+                              const w = (window.top || window).open(url, "_blank", "noopener,noreferrer");
+                              if (w) w.opener = null;
+                            }}
                           >
                             管理画面で開く
-                          </Link>
+                          </Button>
                           {detailReview.product.handle ? (
-                            <Link url={`https://shop.mining-base.co.jp/products/${detailReview.product.handle}`} external>
+                            <Button
+                              variant="plain"
+                              onClick={() => {
+                                const url = `https://shop.mining-base.co.jp/products/${detailReview.product!.handle}`;
+                                const w = (window.top || window).open(url, "_blank", "noopener,noreferrer");
+                                if (w) w.opener = null;
+                              }}
+                            >
                               ストアフロントで開く
-                            </Link>
+                            </Button>
                           ) : null}
                         </InlineStack>
                       </BlockStack>
@@ -1462,7 +1473,11 @@ export default function ReviewsTab() {
                       <Text as="h4" variant="headingXs">✓ 認証購入元の注文</Text>
                       <InlineStack gap="200">
                         <Box minWidth="100px"><Text as="span" tone="subdued" variant="bodySm">注文番号</Text></Box>
-                        <Link url={`https://admin.shopify.com/store/${shop}/orders/${detailExtras.order.id.split("/").pop()}`} external>{detailExtras.order.name}</Link>
+                        <Button variant="plain" onClick={() => {
+                          const url = `https://admin.shopify.com/store/${shop}/orders/${detailExtras.order!.id.split("/").pop()}`;
+                          const w = (window.top || window).open(url, "_blank", "noopener,noreferrer");
+                          if (w) w.opener = null;
+                        }}>{detailExtras.order.name}</Button>
                       </InlineStack>
                       <InlineStack gap="200">
                         <Box minWidth="100px"><Text as="span" tone="subdued" variant="bodySm">購入者</Text></Box>
