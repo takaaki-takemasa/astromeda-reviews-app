@@ -317,6 +317,144 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const formData = await request.formData();
   const intent = formData.get("intent") as string;
 
+  // ─── intent: import_csv (admin uploads CSV → bulk create/update) ───
+  if (intent === "import_csv") {
+    const fileField = formData.get("file");
+    if (!fileField || typeof fileField !== "object" || !("size" in (fileField as any))) {
+      return { ok: false, error: "CSV ファイルが添付されていません", intent };
+    }
+    const f = fileField as File;
+    if (f.size > 5 * 1024 * 1024) return { ok: false, error: "CSV は 5MB 以下にしてください", intent };
+
+    let text = await f.text();
+    // strip BOM
+    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+
+    // ─── RFC 4180 minimal parser ───
+    type Row = string[];
+    function parseCsv(input: string): Row[] {
+      const rows: Row[] = [];
+      let cur: Row = [];
+      let field = "";
+      let inQuotes = false;
+      for (let i = 0; i < input.length; i++) {
+        const c = input[i];
+        if (inQuotes) {
+          if (c === '"') {
+            if (input[i + 1] === '"') { field += '"'; i++; }
+            else { inQuotes = false; }
+          } else { field += c; }
+        } else {
+          if (c === '"') { inQuotes = true; }
+          else if (c === ",") { cur.push(field); field = ""; }
+          else if (c === "\r") { /* skip */ }
+          else if (c === "\n") { cur.push(field); rows.push(cur); cur = []; field = ""; }
+          else { field += c; }
+        }
+      }
+      if (field.length > 0 || cur.length > 0) { cur.push(field); rows.push(cur); }
+      return rows.filter((r) => r.length > 1 || (r.length === 1 && r[0].trim() !== ""));
+    }
+
+    const rows = parseCsv(text);
+    if (rows.length < 2) return { ok: false, error: "CSV にデータ行がありません (1行目はヘッダー)", intent };
+
+    const headers = rows[0].map((h) => h.trim().toLowerCase());
+    const idxOf = (k: string) => headers.indexOf(k);
+    const requiredCols = ["product_handle", "rating", "title", "body", "reviewer_name"];
+    for (const c of requiredCols) {
+      if (idxOf(c) === -1) return { ok: false, error: `必須列が不足しています: ${c}`, intent };
+    }
+
+    // Pre-fetch product handle → GID map (only for handles used in CSV)
+    const handles = Array.from(new Set(rows.slice(1).map((r) => (r[idxOf("product_handle")] || "").trim()).filter(Boolean)));
+    const handleToGid = new Map<string, string>();
+    for (const h of handles) {
+      const phRes = await admin.graphql(`#graphql
+        query ProductByHandle($handle: String!) {
+          productByHandle(handle: $handle) { id }
+        }
+      `, { variables: { handle: h } });
+      const phJson = (await phRes.json()) as { data?: { productByHandle?: { id?: string } } };
+      const gid = phJson.data?.productByHandle?.id;
+      if (gid) handleToGid.set(h, gid);
+    }
+
+    const results = { created: 0, updated: 0, errors: [] as Array<{ row: number; error: string }> };
+
+    for (let r = 1; r < rows.length; r++) {
+      const row = rows[r];
+      if (row.every((c) => !c || !c.trim())) continue; // skip blank
+      try {
+        const get = (k: string) => (idxOf(k) >= 0 ? (row[idxOf(k)] || "").trim() : "");
+        const id = get("id");
+        const handle = get("product_handle");
+        const rating = parseInt(get("rating"), 10);
+        const title = get("title");
+        const body = get("body");
+        const reviewer_name = get("reviewer_name");
+        const reviewer_email = get("reviewer_email");
+        let source_type = get("source_type") || "unverified";
+        let status = get("status") || "pending";
+
+        if (!handle) throw new Error("product_handle が空");
+        const productGid = handleToGid.get(handle);
+        if (!productGid) throw new Error(`商品が見つかりません: ${handle}`);
+        if (!(rating >= 1 && rating <= 5)) throw new Error(`rating は 1-5: ${get("rating")}`);
+        if (!title) throw new Error("title が空");
+        if (!body || body.length < 1) throw new Error("body が空");
+        if (!reviewer_name) throw new Error("reviewer_name が空");
+        const validSource = ["verified_purchase", "gift_recipient", "unverified"];
+        if (!validSource.includes(source_type)) source_type = "unverified";
+        const validStatus = ["pending", "approved", "rejected"];
+        if (!validStatus.includes(status)) status = "pending";
+
+        const fields: Array<{ key: string; value: string }> = [
+          { key: "product_ref", value: productGid },
+          { key: "rating", value: String(rating) },
+          { key: "title", value: title },
+          { key: "body", value: body },
+          { key: "reviewer_name", value: reviewer_name },
+          { key: "reviewer_email", value: reviewer_email || `admin@${session.shop}` },
+          { key: "source_type", value: source_type },
+          { key: "status", value: status },
+        ];
+
+        if (id && id.startsWith("gid://shopify/Metaobject/")) {
+          const upRes = await admin.graphql(EDIT_REVIEW_MUTATION, { variables: { id, fields } });
+          const upJson = (await upRes.json()) as { data?: { metaobjectUpdate?: { userErrors: Array<{ message: string }> } } };
+          const errs = upJson.data?.metaobjectUpdate?.userErrors ?? [];
+          if (errs.length) throw new Error(errs.map((e) => e.message).join(", "));
+          results.updated++;
+        } else {
+          const fieldsForCreate = [...fields];
+          if (status === "approved") {
+            fieldsForCreate.push({ key: "approved_at", value: new Date().toISOString() });
+            fieldsForCreate.push({ key: "approved_by", value: `${session.shop} (CSV import)` });
+          }
+          const crRes = await admin.graphql(CREATE_REVIEW_MUTATION, {
+            variables: { metaobject: { type: "astromeda_review", fields: fieldsForCreate } },
+          });
+          const crJson = (await crRes.json()) as { data?: { metaobjectCreate?: { metaobject?: { id: string }; userErrors: Array<{ message: string }> } } };
+          const errs = crJson.data?.metaobjectCreate?.userErrors ?? [];
+          if (errs.length) throw new Error(errs.map((e) => e.message).join(", "));
+          if (!crJson.data?.metaobjectCreate?.metaobject?.id) throw new Error("Metaobject 作成失敗");
+          results.created++;
+        }
+      } catch (e: any) {
+        results.errors.push({ row: r + 1, error: e?.message ?? String(e) });
+      }
+    }
+
+    await appendAuditLogSafe({
+      admin, actor: session.shop, action: "review.import_csv",
+      resource_id: "csv:" + (f.name || "upload"), resource_type: "astromeda_review",
+      request, metadata: { created: results.created, updated: results.updated, errors: results.errors.length },
+    });
+
+    return { ok: true, intent, csvImport: results };
+  }
+
   // ─── intent: fetch_detail (load token/order info for a review) ───
   if (intent === "fetch_detail") {
     const reviewId = String(formData.get("reviewId") || "");
@@ -756,12 +894,33 @@ export default function ReviewsTab() {
   // ─── Admin-create modal state ───
   const shopify = useAppBridge();
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
   const [pickedProduct, setPickedProduct] = useState<{ id: string; title: string; image?: string | null } | null>(null);
   const [formRating, setFormRating] = useState("5");
   const [formTitle, setFormTitle] = useState("");
   const [formBody, setFormBody] = useState("");
   const [formName, setFormName] = useState("ASTROMEDA 編集部");
   const [formEmail, setFormEmail] = useState("");
+
+  const openImport = useCallback(() => {
+    setImportFile(null);
+    setImportOpen(true);
+  }, []);
+  const submitImport = useCallback(() => {
+    if (!importFile) return;
+    const fd = new FormData();
+    fd.set("intent", "import_csv");
+    fd.set("file", importFile, importFile.name);
+    fetcher.submit(fd, { method: "post", encType: "multipart/form-data" });
+  }, [importFile, fetcher]);
+
+  // Close import modal on success
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data?.ok && fetcher.data?.intent === "import_csv") {
+      // keep modal open to show result, don't reset
+    }
+  }, [fetcher.state, fetcher.data]);
 
   const openCreate = useCallback(() => {
     setPickedProduct(null);
@@ -1049,6 +1208,10 @@ export default function ReviewsTab() {
       title="レビュー一覧"
       subtitle="行をクリックすると詳細とストアフロントプレビューを表示します"
       primaryAction={{ content: "新規レビューを作成", onAction: openCreate }}
+      secondaryActions={[
+        { content: "CSV を出力", onAction: () => { window.open("/app/reviews/export.csv", "_blank"); } },
+        { content: "CSV を取り込み", onAction: openImport },
+      ]}
       secondaryActions={
         tab === "pending" && selectedResources.length > 0
           ? [
@@ -1554,6 +1717,64 @@ export default function ReviewsTab() {
                 <Banner tone="critical" title={fetcher.data.error} onDismiss={() => {}} />
               ) : null}
             </FormLayout>
+          </BlockStack>
+        </Modal.Section>
+      </Modal>
+
+      {/* ─── CSV Import modal ─── */}
+      <Modal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        title="CSV を取り込み"
+        primaryAction={{
+          content: fetcher.state === "submitting" && fetcher.data?.intent !== "import_csv" ? "取り込み..." : (fetcher.state === "submitting" ? "取り込み中..." : "実行"),
+          onAction: submitImport,
+          disabled: !importFile || fetcher.state === "submitting",
+          loading: fetcher.state === "submitting",
+        }}
+        secondaryActions={[{ content: "閉じる", onAction: () => setImportOpen(false) }]}
+      >
+        <Modal.Section>
+          <BlockStack gap="400">
+            <Banner tone="info">
+              <Text as="p" variant="bodySm">
+                CSV の列: id (空欄で新規 / gid で更新) / product_handle (必須) / rating (1-5 必須) / title (必須) / body (必須) / reviewer_name (必須) / reviewer_email / source_type (verified_purchase | gift_recipient | unverified) / status (pending | approved | rejected) / photo_1..6 / approved_at / approved_by / updated_at
+              </Text>
+            </Banner>
+            <Banner tone="warning">
+              <Text as="p" variant="bodySm">
+                「CSV を出力」でダウンロードしたファイルを Excel 等で編集して取り込んでください。photo_1..6 列は今のところ書き戻し対象外です (画像は写真スロットの D&D から登録)。
+              </Text>
+            </Banner>
+            <DropZone
+              accept="text/csv,.csv"
+              type="file"
+              allowMultiple={false}
+              onDrop={(_files, accepted) => { if (accepted && accepted[0]) setImportFile(accepted[0]); }}
+              disabled={fetcher.state === "submitting"}
+            >
+              <DropZone.FileUpload actionTitle="CSV を選択" actionHint="またはドラッグ&ドロップ" />
+            </DropZone>
+            {importFile ? (
+              <Text as="p" variant="bodySm">選択中: {importFile.name} ({Math.round(importFile.size / 1024)} KB)</Text>
+            ) : null}
+            {fetcher.data?.intent === "import_csv" && fetcher.data?.ok && fetcher.data?.csvImport ? (
+              <Banner tone="success" title="取り込み完了">
+                <Text as="p" variant="bodySm">
+                  作成: {fetcher.data.csvImport.created} 件 / 更新: {fetcher.data.csvImport.updated} 件 / エラー: {fetcher.data.csvImport.errors.length} 件
+                </Text>
+                {fetcher.data.csvImport.errors.length > 0 ? (
+                  <Box paddingBlockStart="200">
+                    <Text as="p" variant="bodySm" tone="critical">エラー詳細 (最大10件):</Text>
+                    <ul style={{ marginTop: 6, paddingLeft: 18, fontSize: 12 }}>
+                      {fetcher.data.csvImport.errors.slice(0, 10).map((e: any, i: number) => (
+                        <li key={i}>行 {e.row}: {e.error}</li>
+                      ))}
+                    </ul>
+                  </Box>
+                ) : null}
+              </Banner>
+            ) : null}
           </BlockStack>
         </Modal.Section>
       </Modal>
