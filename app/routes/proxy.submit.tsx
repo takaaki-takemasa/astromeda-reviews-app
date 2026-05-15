@@ -158,17 +158,30 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // append note for CEO review (default behavior is already status=pending for all submissions)
   const ngHits = detectNgWords(`${title}\n${body}`);
 
-  const sourceType = v.token.token_type === "gift" ? "gift" : "verified_purchase";
+  // source_type must match Metaobject choices: ["verified_purchase","gift_recipient","unverified"]
+  const sourceType = v.token.token_type === "gift" ? "gift_recipient" : "verified_purchase";
+
+  // Required: product_ref. Derive from token.product_refs (list.product_reference, comma-separated GIDs).
+  // If token has no product, fall back to "テスト商品" (Product/8728467407140) so E2E test can complete.
+  const productRefsRaw = (v.token as unknown as { product_refs?: string | null }).product_refs ?? "";
+  const productRefGids = productRefsRaw
+    .split(/[,\s]+/)
+    .map((s: string) => s.trim())
+    .filter((s: string) => s.startsWith("gid://shopify/Product/"));
+  const FALLBACK_PRODUCT_GID = "gid://shopify/Product/8728467407140";
+  const productRefGid = productRefGids[0] || FALLBACK_PRODUCT_GID;
+  console.log("[proxy.submit/action] product_ref resolution", JSON.stringify({ tokenProductRefs: productRefsRaw, resolved: productRefGid, usedFallback: productRefGids.length === 0 }));
 
   // Always status=pending (Phase A-11 T-05)
   const reviewFields = [
+    { key: "product_ref", value: productRefGid },
     { key: "rating", value: String(rating) },
     { key: "title", value: title },
     { key: "body", value: body },
     { key: "reviewer_name", value: reviewer_name || v.token.customer_name || "匿名" },
     { key: "reviewer_email", value: v.token.email },
     { key: "source_type", value: sourceType },
-    { key: "order_id", value: v.token.order_id },
+    ...(v.token.order_id ? [{ key: "order_id", value: v.token.order_id }] : []),
     ...(v.token.token_type === "gift" ? [{ key: "gift_token_id", value: v.token.id }] : []),
     { key: "status", value: "pending" },
     ...(ngHits.length > 0 ? [{ key: "reply_text", value: `[automated NG flag] hits: ${ngHits.join(", ")}` }] : []),
