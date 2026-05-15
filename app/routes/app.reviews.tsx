@@ -23,13 +23,17 @@ import {
   Box,
   Link,
   SkeletonBodyText,
+  ProgressBar,
 } from "@shopify/polaris";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
 import { useLoaderData, useFetcher, useSearchParams } from "@remix-run/react";
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { authenticate } from "../shopify.server";
 import { appendAuditLogSafe } from "../lib/audit-log";
+
+// Vercel Pro: 60 秒まで。チャンク 1 つあたり 30 行 × 500ms ≈ 15-20 秒で完走想定だが安全マージンとして明示
+export const config = { maxDuration: 60 };
 
 type ReviewStatus = "pending" | "approved" | "rejected";
 
@@ -316,6 +320,120 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
   const formData = await request.formData();
   const intent = formData.get("intent") as string;
+
+  // ─── intent: import_csv_resolve (client pre-step: resolve unique product handles to GIDs) ───
+  if (intent === "import_csv_resolve") {
+    let handles: string[] = [];
+    try { handles = JSON.parse(String(formData.get("handles") || "[]")); } catch { handles = []; }
+    if (!Array.isArray(handles)) return { ok: false, error: "handles が不正です", intent };
+    const handleToGid: Record<string, string> = {};
+    const unresolved: string[] = [];
+    for (const h of handles) {
+      if (!h || typeof h !== "string") continue;
+      const phRes = await admin.graphql(`#graphql
+        query ProductByHandle($handle: String!) {
+          productByHandle(handle: $handle) { id }
+        }
+      `, { variables: { handle: h } });
+      const phJson = (await phRes.json()) as { data?: { productByHandle?: { id?: string } } };
+      const gid = phJson.data?.productByHandle?.id;
+      if (gid) handleToGid[h] = gid; else unresolved.push(h);
+    }
+    return { ok: true, intent, handleToGid, unresolved };
+  }
+
+  // ─── intent: import_csv_chunk (process a small chunk of rows; client-side chunking) ───
+  if (intent === "import_csv_chunk") {
+    let headers: string[] = [];
+    let rows: string[][] = [];
+    let handleToGid: Record<string, string> = {};
+    let rowOffset = 2;
+    try {
+      headers = JSON.parse(String(formData.get("headers") || "[]"));
+      rows = JSON.parse(String(formData.get("rows") || "[]"));
+      handleToGid = JSON.parse(String(formData.get("handleToGid") || "{}"));
+      rowOffset = parseInt(String(formData.get("rowOffset") || "2"), 10) || 2;
+    } catch (e: any) {
+      return { ok: false, error: `chunk payload parse error: ${e?.message ?? String(e)}`, intent };
+    }
+    if (!Array.isArray(headers) || !Array.isArray(rows)) {
+      return { ok: false, error: "headers / rows が配列ではありません", intent };
+    }
+    const headersLow = headers.map((h) => String(h).trim().toLowerCase());
+    const idxOf = (k: string) => headersLow.indexOf(k);
+    const requiredCols = ["product_handle", "rating", "title", "body", "reviewer_name"];
+    for (const c of requiredCols) {
+      if (idxOf(c) === -1) return { ok: false, error: `必須列が不足しています: ${c}`, intent };
+    }
+
+    const results = { created: 0, updated: 0, errors: [] as Array<{ row: number; error: string }> };
+
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r];
+      if (!Array.isArray(row) || row.every((c) => !c || !String(c).trim())) continue;
+      try {
+        const get = (k: string) => (idxOf(k) >= 0 ? String(row[idxOf(k)] ?? "").trim() : "");
+        const id = get("id");
+        const handle = get("product_handle");
+        const rating = parseInt(get("rating"), 10);
+        const title = get("title");
+        const body = get("body");
+        const reviewer_name = get("reviewer_name");
+        const reviewer_email = get("reviewer_email");
+        let source_type = get("source_type") || "unverified";
+        let status = get("status") || "pending";
+
+        if (!handle) throw new Error("product_handle が空");
+        const productGid = handleToGid[handle];
+        if (!productGid) throw new Error(`商品が見つかりません: ${handle}`);
+        if (!(rating >= 1 && rating <= 5)) throw new Error(`rating は 1-5: ${get("rating")}`);
+        if (!title) throw new Error("title が空");
+        if (!body || body.length < 1) throw new Error("body が空");
+        if (!reviewer_name) throw new Error("reviewer_name が空");
+        const validSource = ["verified_purchase", "gift_recipient", "unverified"];
+        if (!validSource.includes(source_type)) source_type = "unverified";
+        const validStatus = ["pending", "approved", "rejected"];
+        if (!validStatus.includes(status)) status = "pending";
+
+        const fields: Array<{ key: string; value: string }> = [
+          { key: "product_ref", value: productGid },
+          { key: "rating", value: String(rating) },
+          { key: "title", value: title },
+          { key: "body", value: body },
+          { key: "reviewer_name", value: reviewer_name },
+          { key: "reviewer_email", value: reviewer_email || `admin@${session.shop}` },
+          { key: "source_type", value: source_type },
+          { key: "status", value: status },
+        ];
+
+        if (id && id.startsWith("gid://shopify/Metaobject/")) {
+          const upRes = await admin.graphql(EDIT_REVIEW_MUTATION, { variables: { id, fields } });
+          const upJson = (await upRes.json()) as { data?: { metaobjectUpdate?: { userErrors: Array<{ message: string }> } } };
+          const errs = upJson.data?.metaobjectUpdate?.userErrors ?? [];
+          if (errs.length) throw new Error(errs.map((e) => e.message).join(", "));
+          results.updated++;
+        } else {
+          const fieldsForCreate = [...fields];
+          if (status === "approved") {
+            fieldsForCreate.push({ key: "approved_at", value: new Date().toISOString() });
+            fieldsForCreate.push({ key: "approved_by", value: `${session.shop} (CSV import)` });
+          }
+          const crRes = await admin.graphql(CREATE_REVIEW_MUTATION, {
+            variables: { metaobject: { type: "astromeda_review", fields: fieldsForCreate } },
+          });
+          const crJson = (await crRes.json()) as { data?: { metaobjectCreate?: { metaobject?: { id: string }; userErrors: Array<{ message: string }> } } };
+          const errs = crJson.data?.metaobjectCreate?.userErrors ?? [];
+          if (errs.length) throw new Error(errs.map((e) => e.message).join(", "));
+          if (!crJson.data?.metaobjectCreate?.metaobject?.id) throw new Error("Metaobject 作成失敗");
+          results.created++;
+        }
+      } catch (e: any) {
+        results.errors.push({ row: rowOffset + r, error: e?.message ?? String(e) });
+      }
+    }
+
+    return { ok: true, intent, csvImport: results };
+  }
 
   // ─── intent: import_csv (admin uploads CSV → bulk create/update) ───
   if (intent === "import_csv") {
@@ -903,24 +1021,156 @@ export default function ReviewsTab() {
   const [formName, setFormName] = useState("ASTROMEDA 編集部");
   const [formEmail, setFormEmail] = useState("");
 
+  const [importProgress, setImportProgress] = useState<{
+    total: number;
+    processed: number;
+    created: number;
+    updated: number;
+    errors: Array<{ row: number; error: string }>;
+    status: "idle" | "resolving" | "importing" | "done" | "error" | "cancelled";
+    message: string;
+  } | null>(null);
+  const importAbortRef = useRef<AbortController | null>(null);
+
   const openImport = useCallback(() => {
     setImportFile(null);
+    setImportProgress(null);
     setImportOpen(true);
   }, []);
-  const submitImport = useCallback(() => {
-    if (!importFile) return;
-    const fd = new FormData();
-    fd.set("intent", "import_csv");
-    fd.set("file", importFile, importFile.name);
-    fetcher.submit(fd, { method: "post", encType: "multipart/form-data" });
-  }, [importFile, fetcher]);
 
-  // Close import modal on success
-  useEffect(() => {
-    if (fetcher.state === "idle" && fetcher.data?.ok && fetcher.data?.intent === "import_csv") {
-      // keep modal open to show result, don't reset
+  const cancelImport = useCallback(() => {
+    importAbortRef.current?.abort();
+  }, []);
+
+  const submitImport = useCallback(async () => {
+    if (!importFile) return;
+    const abort = new AbortController();
+    importAbortRef.current = abort;
+
+    setImportProgress({
+      total: 0, processed: 0, created: 0, updated: 0, errors: [],
+      status: "resolving", message: "CSV を解析中...",
+    });
+
+    try {
+      // ─── parse CSV in browser (RFC 4180 minimal) ───
+      let text = await importFile.text();
+      if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+      type Row = string[];
+      const parseCsv = (input: string): Row[] => {
+        const rows: Row[] = [];
+        let cur: Row = [];
+        let field = "";
+        let inQuotes = false;
+        for (let i = 0; i < input.length; i++) {
+          const c = input[i];
+          if (inQuotes) {
+            if (c === '"') { if (input[i + 1] === '"') { field += '"'; i++; } else { inQuotes = false; } }
+            else { field += c; }
+          } else {
+            if (c === '"') { inQuotes = true; }
+            else if (c === ",") { cur.push(field); field = ""; }
+            else if (c === "\r") { /* skip */ }
+            else if (c === "\n") { cur.push(field); rows.push(cur); cur = []; field = ""; }
+            else { field += c; }
+          }
+        }
+        if (field.length > 0 || cur.length > 0) { cur.push(field); rows.push(cur); }
+        return rows.filter((r) => r.length > 1 || (r.length === 1 && r[0].trim() !== ""));
+      };
+      const all = parseCsv(text);
+      if (all.length < 2) throw new Error("CSV にデータ行がありません (1行目はヘッダー)");
+      const headers = all[0].map((h) => String(h).trim());
+      const headersLow = headers.map((h) => h.toLowerCase());
+      const idxHandle = headersLow.indexOf("product_handle");
+      if (idxHandle === -1) throw new Error("必須列 product_handle が見つかりません");
+      const dataRows = all.slice(1).filter((r) => r.some((c) => c && String(c).trim()));
+      if (dataRows.length === 0) throw new Error("データ行がありません");
+
+      // ─── resolve unique handles → GIDs ───
+      const uniqueHandles = Array.from(new Set(dataRows.map((r) => String(r[idxHandle] || "").trim()).filter(Boolean)));
+      setImportProgress((p) => ({ ...(p!), message: `商品 ID を解決中... (${uniqueHandles.length} 件)` }));
+      const resolveFd = new FormData();
+      resolveFd.set("intent", "import_csv_resolve");
+      resolveFd.set("handles", JSON.stringify(uniqueHandles));
+      const resolveRes = await fetch(window.location.pathname + window.location.search, {
+        method: "POST", body: resolveFd, signal: abort.signal, credentials: "include",
+      });
+      if (!resolveRes.ok) throw new Error(`商品 ID 解決失敗 (HTTP ${resolveRes.status})`);
+      const resolveJson = await resolveRes.json();
+      if (!resolveJson?.ok) throw new Error(resolveJson?.error || "商品 ID 解決失敗");
+      const handleToGid: Record<string, string> = resolveJson.handleToGid || {};
+      const unresolved: string[] = resolveJson.unresolved || [];
+      if (unresolved.length > 0 && Object.keys(handleToGid).length === 0) {
+        throw new Error(`いずれの商品も解決できませんでした: ${unresolved.slice(0, 5).join(", ")}`);
+      }
+
+      // ─── chunk rows (30 per chunk) ───
+      const CHUNK = 30;
+      const chunks: string[][][] = [];
+      for (let i = 0; i < dataRows.length; i += CHUNK) chunks.push(dataRows.slice(i, i + CHUNK));
+
+      setImportProgress({
+        total: dataRows.length, processed: 0, created: 0, updated: 0, errors: [],
+        status: "importing",
+        message: `0 / ${dataRows.length} 行を処理中... (チャンク 1/${chunks.length})`,
+      });
+
+      let aggCreated = 0;
+      let aggUpdated = 0;
+      const aggErrors: Array<{ row: number; error: string }> = [];
+      let processed = 0;
+
+      for (let c = 0; c < chunks.length; c++) {
+        if (abort.signal.aborted) {
+          setImportProgress((p) => ({ ...(p!), status: "cancelled", message: "中止しました" }));
+          return;
+        }
+        const chunkFd = new FormData();
+        chunkFd.set("intent", "import_csv_chunk");
+        chunkFd.set("headers", JSON.stringify(headers));
+        chunkFd.set("rows", JSON.stringify(chunks[c]));
+        chunkFd.set("handleToGid", JSON.stringify(handleToGid));
+        chunkFd.set("rowOffset", String(processed + 2));
+        const chunkRes = await fetch(window.location.pathname + window.location.search, {
+          method: "POST", body: chunkFd, signal: abort.signal, credentials: "include",
+        });
+        if (!chunkRes.ok) throw new Error(`チャンク ${c + 1}/${chunks.length} 失敗 (HTTP ${chunkRes.status})`);
+        const chunkJson = await chunkRes.json();
+        if (!chunkJson?.ok) throw new Error(chunkJson?.error || `チャンク ${c + 1}/${chunks.length} 失敗`);
+        aggCreated += chunkJson.csvImport?.created || 0;
+        aggUpdated += chunkJson.csvImport?.updated || 0;
+        if (Array.isArray(chunkJson.csvImport?.errors)) aggErrors.push(...chunkJson.csvImport.errors);
+        processed += chunks[c].length;
+        setImportProgress({
+          total: dataRows.length, processed, created: aggCreated, updated: aggUpdated,
+          errors: aggErrors, status: "importing",
+          message: `${processed} / ${dataRows.length} 行を処理中... (チャンク ${c + 1}/${chunks.length})`,
+        });
+      }
+
+      setImportProgress({
+        total: dataRows.length, processed,
+        created: aggCreated, updated: aggUpdated, errors: aggErrors,
+        status: "done",
+        message: `完了: 作成 ${aggCreated} / 更新 ${aggUpdated} / エラー ${aggErrors.length}`,
+      });
+    } catch (e: any) {
+      if (e?.name === "AbortError") {
+        setImportProgress((p) => ({
+          ...(p ?? { total: 0, processed: 0, created: 0, updated: 0, errors: [] }),
+          status: "cancelled", message: "中止しました",
+        }));
+      } else {
+        setImportProgress((p) => ({
+          ...(p ?? { total: 0, processed: 0, created: 0, updated: 0, errors: [] }),
+          status: "error", message: e?.message || String(e),
+        }));
+      }
+    } finally {
+      importAbortRef.current = null;
     }
-  }, [fetcher.state, fetcher.data]);
+  }, [importFile]);
 
   const openCreate = useCallback(() => {
     setPickedProduct(null);
@@ -1772,15 +2022,20 @@ export default function ReviewsTab() {
       {/* ─── CSV Import modal ─── */}
       <Modal
         open={importOpen}
-        onClose={() => setImportOpen(false)}
+        onClose={() => { if (importProgress?.status !== "importing" && importProgress?.status !== "resolving") setImportOpen(false); }}
         title="CSV を取り込み"
-        primaryAction={{
-          content: fetcher.state === "submitting" && fetcher.data?.intent !== "import_csv" ? "取り込み..." : (fetcher.state === "submitting" ? "取り込み中..." : "実行"),
-          onAction: submitImport,
-          disabled: !importFile || fetcher.state === "submitting",
-          loading: fetcher.state === "submitting",
-        }}
-        secondaryActions={[{ content: "閉じる", onAction: () => setImportOpen(false) }]}
+        primaryAction={
+          importProgress?.status === "importing" || importProgress?.status === "resolving"
+            ? { content: "中止", onAction: cancelImport, destructive: true }
+            : importProgress?.status === "done"
+              ? { content: "閉じる", onAction: () => setImportOpen(false) }
+              : { content: "実行", onAction: submitImport, disabled: !importFile }
+        }
+        secondaryActions={
+          importProgress?.status === "importing" || importProgress?.status === "resolving"
+            ? undefined
+            : [{ content: "閉じる", onAction: () => setImportOpen(false) }]
+        }
       >
         <Modal.Section>
           <BlockStack gap="400">
@@ -1815,22 +2070,52 @@ export default function ReviewsTab() {
             {importFile ? (
               <Text as="p" variant="bodySm">選択中: {importFile.name} ({Math.round(importFile.size / 1024)} KB)</Text>
             ) : null}
-            {fetcher.data?.intent === "import_csv" && fetcher.data?.ok && fetcher.data?.csvImport ? (
-              <Banner tone="success" title="取り込み完了">
-                <Text as="p" variant="bodySm">
-                  作成: {fetcher.data.csvImport.created} 件 / 更新: {fetcher.data.csvImport.updated} 件 / エラー: {fetcher.data.csvImport.errors.length} 件
-                </Text>
-                {fetcher.data.csvImport.errors.length > 0 ? (
-                  <Box paddingBlockStart="200">
-                    <Text as="p" variant="bodySm" tone="critical">エラー詳細 (最大10件):</Text>
-                    <ul style={{ marginTop: 6, paddingLeft: 18, fontSize: 12 }}>
-                      {fetcher.data.csvImport.errors.slice(0, 10).map((e: any, i: number) => (
-                        <li key={i}>行 {e.row}: {e.error}</li>
-                      ))}
-                    </ul>
-                  </Box>
+            {importProgress ? (
+              <BlockStack gap="200">
+                {(importProgress.status === "importing" || importProgress.status === "resolving") ? (
+                  <>
+                    <ProgressBar progress={importProgress.total > 0 ? Math.round((importProgress.processed / importProgress.total) * 100) : 5} size="medium" />
+                    <Text as="p" variant="bodySm">{importProgress.message}</Text>
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      作成 {importProgress.created} 件 / 更新 {importProgress.updated} 件 / エラー {importProgress.errors.length} 件
+                    </Text>
+                  </>
                 ) : null}
-              </Banner>
+                {importProgress.status === "done" ? (
+                  <Banner tone="success" title="取り込み完了">
+                    <Text as="p" variant="bodySm">
+                      作成: {importProgress.created} 件 / 更新: {importProgress.updated} 件 / エラー: {importProgress.errors.length} 件
+                    </Text>
+                    {importProgress.errors.length > 0 ? (
+                      <Box paddingBlockStart="200">
+                        <Text as="p" variant="bodySm" tone="critical">エラー詳細 (最大20件):</Text>
+                        <ul style={{ marginTop: 6, paddingLeft: 18, fontSize: 12 }}>
+                          {importProgress.errors.slice(0, 20).map((e, i) => (
+                            <li key={i}>行 {e.row}: {e.error}</li>
+                          ))}
+                        </ul>
+                      </Box>
+                    ) : null}
+                  </Banner>
+                ) : null}
+                {importProgress.status === "error" ? (
+                  <Banner tone="critical" title="取り込み失敗">
+                    <Text as="p" variant="bodySm">{importProgress.message}</Text>
+                    {importProgress.processed > 0 ? (
+                      <Text as="p" variant="bodySm" tone="subdued">
+                        途中までの結果: 作成 {importProgress.created} 件 / 更新 {importProgress.updated} 件 / エラー {importProgress.errors.length} 件
+                      </Text>
+                    ) : null}
+                  </Banner>
+                ) : null}
+                {importProgress.status === "cancelled" ? (
+                  <Banner tone="warning" title="中止しました">
+                    <Text as="p" variant="bodySm">
+                      途中までの結果: 作成 {importProgress.created} 件 / 更新 {importProgress.updated} 件 / エラー {importProgress.errors.length} 件
+                    </Text>
+                  </Banner>
+                ) : null}
+              </BlockStack>
             ) : null}
           </BlockStack>
         </Modal.Section>

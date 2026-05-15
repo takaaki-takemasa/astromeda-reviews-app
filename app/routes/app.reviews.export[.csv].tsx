@@ -1,4 +1,7 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
+
+// Vercel Pro: 60 秒まで延長可能。大量レビュー (>5000件) でも余裕を持って完走させるため明示
+export const config = { maxDuration: 60 };
 import { authenticate } from "../shopify.server";
 
 const EXPORT_LIST_QUERY = `#graphql
@@ -46,16 +49,19 @@ function refVal(node: { fields: Array<{ key: string; value: string | null; refer
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
 
-  // Fetch up to 1000 reviews (paginated 250/page * 4)
+  // Fetch all reviews (paginated 250/page, hard cap 50000 for safety)
   const allNodes: any[] = [];
   let cursor: string | null = null;
-  for (let i = 0; i < 4; i++) {
+  const HARD_CAP = 50000;
+  let pageCount = 0;
+  while (allNodes.length < HARD_CAP) {
     const res = await admin.graphql(EXPORT_LIST_QUERY, {
       variables: { first: 250, after: cursor },
     });
     const json = (await res.json()) as { data?: { metaobjects?: { edges: Array<{ node: any }>; pageInfo: { hasNextPage: boolean; endCursor: string | null } } } };
     const edges = json.data?.metaobjects?.edges ?? [];
     for (const e of edges) allNodes.push(e.node);
+    pageCount++;
     const pi = json.data?.metaobjects?.pageInfo;
     if (!pi?.hasNextPage) break;
     cursor = pi.endCursor;
