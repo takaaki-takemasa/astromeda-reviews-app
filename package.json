@@ -17,7 +17,7 @@
     "prisma": "prisma",
     "graphql-codegen": "graphql-codegen",
     "vite": "vite",
-    "postinstall": "node scripts/patch-remix-csrf.js"
+    "postinstall": "node scripts/patch-remix-csrf.cjs"
   },
   "type": "module",
   "engines": {
