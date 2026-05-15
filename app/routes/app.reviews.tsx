@@ -1230,7 +1230,21 @@ export default function ReviewsTab() {
           ) : null}
 
           <InlineStack gap="200" align="end">
-            <Button onClick={() => window.open("/app/reviews/export.csv", "_blank")}>
+            <Button onClick={async () => {
+              try {
+                const res = await fetch("/app/reviews/export.csv", { credentials: "include" });
+                if (!res.ok) { console.error("export failed", res.status); return; }
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                const d = new Date().toISOString().slice(0, 10);
+                a.href = url;
+                a.download = `astromeda-reviews-${d}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
+              } catch (e) { console.error("export error", e); }
+            }}>
               CSV を出力
             </Button>
             <Button onClick={openImport}>
