@@ -1232,6 +1232,23 @@ export default function ReviewsTab() {
           <InlineStack gap="200" align="end">
             <Button onClick={async () => {
               try {
+                const res = await fetch("/app/reviews/products.csv", { credentials: "include" });
+                if (!res.ok) { console.error("products export failed", res.status); return; }
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                const d = new Date().toISOString().slice(0, 10);
+                a.href = url;
+                a.download = `astromeda-parent-products-${d}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
+              } catch (e) { console.error("products export error", e); }
+            }}>
+              対象商品一覧 CSV
+            </Button>
+            <Button onClick={async () => {
+              try {
                 const res = await fetch("/app/reviews/export.csv", { credentials: "include" });
                 if (!res.ok) { console.error("export failed", res.status); return; }
                 const blob = await res.blob();
@@ -1755,10 +1772,19 @@ export default function ReviewsTab() {
       >
         <Modal.Section>
           <BlockStack gap="400">
-            <Banner tone="info">
-              <Text as="p" variant="bodySm">
-                CSV の列: id (空欄で新規 / gid で更新) / product_handle (必須) / rating (1-5 必須) / title (必須) / body (必須) / reviewer_name (必須) / reviewer_email / source_type (verified_purchase | gift_recipient | unverified) / status (pending | approved | rejected) / photo_1..6 / approved_at / approved_by / updated_at
-              </Text>
+            <Banner tone="info" title="使い方">
+              <BlockStack gap="100">
+                <Text as="p" variant="bodySm">
+                  <strong>① 新規レビューを CSV で一括投稿する場合:</strong> id 列は<strong>空欄のままで OK</strong> です。取り込み時に Shopify が自動で ID を発行します。「対象商品一覧 CSV」ボタンから親商品一覧をダウンロードして、行ごとに rating/title/body などを Excel で記入してください。
+                </Text>
+                <Text as="p" variant="bodySm">
+                  <strong>② 既存レビューを編集する場合:</strong> 「CSV を出力」でダウンロードした CSV の id 列 (gid://shopify/Metaobject/...) を残したまま編集すると、その行は<strong>更新</strong>されます。
+                </Text>
+                <Text as="p" variant="bodySm" tone="subdued">
+                  必須列: product_handle / rating (1-5) / title / body / reviewer_name<br/>
+                  任意列: reviewer_email / source_type (verified_purchase | gift_recipient | unverified) / status (pending | approved | rejected)
+                </Text>
+              </BlockStack>
             </Banner>
             <Banner tone="warning">
               <Text as="p" variant="bodySm">
