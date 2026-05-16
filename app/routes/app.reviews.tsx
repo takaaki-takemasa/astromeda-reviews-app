@@ -1457,11 +1457,19 @@ export default function ReviewsTab() {
       subtitle="行をクリックすると詳細とストアフロントプレビューを表示します"
       primaryAction={{ content: "新規レビューを作成", onAction: openCreate }}
       secondaryActions={
-        tab === "pending" && selectedResources.length > 0
-          ? [
-              { content: `${selectedResources.length} 件を承認`, onAction: () => bulkSubmit("approve") },
-              { content: `${selectedResources.length} 件を拒否`, destructive: true, onAction: () => bulkSubmit("reject") },
-            ]
+        selectedResources.length > 0
+          ? (tab === "pending"
+              ? [
+                  { content: `${selectedResources.length} 件を承認`, onAction: () => bulkSubmit("approve") },
+                  { content: `${selectedResources.length} 件を非表示にする`, destructive: true, onAction: () => bulkSubmit("reject") },
+                ]
+              : tab === "approved"
+              ? [
+                  { content: `${selectedResources.length} 件を非表示にする`, destructive: true, onAction: () => bulkSubmit("reject") },
+                ]
+              : [
+                  { content: `${selectedResources.length} 件を承認 (再公開)`, onAction: () => bulkSubmit("approve") },
+                ])
           : []
       }
     >
@@ -1572,20 +1580,26 @@ export default function ReviewsTab() {
         title={detailReview ? `レビュー詳細 — ${detailReview.title || ""}` : "詳細"}
         size="large"
         primaryAction={
-          detailReview && detailReview.status === "pending"
-            ? {
-                content: "承認して公開",
-                onAction: () => handleDetailAction("approve"),
-                loading: fetcher.state === "submitting",
-              }
+          detailReview
+            ? detailReview.status === "pending"
+              ? { content: "承認して公開", onAction: () => handleDetailAction("approve"), loading: fetcher.state === "submitting" }
+              : detailReview.status === "approved"
+              ? { content: "非表示にする", destructive: true, onAction: () => handleDetailAction("reject"), loading: fetcher.state === "submitting" }
+              : { content: "承認して再公開", onAction: () => handleDetailAction("approve"), loading: fetcher.state === "submitting" }
             : { content: "閉じる", onAction: closeDetail }
         }
         secondaryActions={
-          detailReview && detailReview.status === "pending"
-            ? [
-                { content: "拒否する", destructive: true, onAction: () => handleDetailAction("reject"), loading: fetcher.state === "submitting" },
-                { content: "閉じる", onAction: closeDetail },
-              ]
+          detailReview
+            ? detailReview.status === "pending"
+              ? [
+                  { content: "非表示にする", destructive: true, onAction: () => handleDetailAction("reject"), loading: fetcher.state === "submitting" },
+                  { content: "閉じる", onAction: closeDetail },
+                ]
+              : detailReview.status === "approved"
+              ? [{ content: "閉じる", onAction: closeDetail }]
+              : [
+                  { content: "閉じる", onAction: closeDetail },
+                ]
             : []
         }
       >
