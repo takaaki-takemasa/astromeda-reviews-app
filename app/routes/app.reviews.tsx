@@ -361,7 +361,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
     const headersLow = headers.map((h) => String(h).trim().toLowerCase());
     const idxOf = (k: string) => headersLow.indexOf(k);
-    const requiredCols = ["product_handle", "rating", "title", "body", "reviewer_name"];
+    const requiredCols = ["product_handle", "rating", "body", "reviewer_name"];
     for (const c of requiredCols) {
       if (idxOf(c) === -1) return { ok: false, error: `必須列が不足しています: ${c}`, intent };
     }
@@ -376,7 +376,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const id = get("id");
         const handle = get("product_handle");
         const rating = parseInt(get("rating"), 10);
-        const title = get("title");
+        const titleRaw = get("title");
         const body = get("body");
         const reviewer_name = get("reviewer_name");
         const reviewer_email = get("reviewer_email");
@@ -387,7 +387,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const productGid = handleToGid[handle];
         if (!productGid) throw new Error(`商品が見つかりません: ${handle}`);
         if (!(rating >= 1 && rating <= 5)) throw new Error(`rating は 1-5: ${get("rating")}`);
-        if (!title) throw new Error("title が空");
+        // title は任意 (空なら body の先頭から自動生成する)
         if (!body || body.length < 1) throw new Error("body が空");
         if (!reviewer_name) throw new Error("reviewer_name が空");
         const validSource = ["verified_purchase", "gift_recipient", "unverified"];
@@ -398,7 +398,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const fields: Array<{ key: string; value: string }> = [
           { key: "product_ref", value: productGid },
           { key: "rating", value: String(rating) },
-          { key: "title", value: title },
+          { key: "title", value: (titleRaw || (body || "").slice(0, 40)) },
           { key: "body", value: body },
           { key: "reviewer_name", value: reviewer_name },
           { key: "reviewer_email", value: reviewer_email || `admin@${session.shop}` },
@@ -479,7 +479,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     const headers = rows[0].map((h) => h.trim().toLowerCase());
     const idxOf = (k: string) => headers.indexOf(k);
-    const requiredCols = ["product_handle", "rating", "title", "body", "reviewer_name"];
+    const requiredCols = ["product_handle", "rating", "body", "reviewer_name"];
     for (const c of requiredCols) {
       if (idxOf(c) === -1) return { ok: false, error: `必須列が不足しています: ${c}`, intent };
     }
@@ -508,7 +508,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const id = get("id");
         const handle = get("product_handle");
         const rating = parseInt(get("rating"), 10);
-        const title = get("title");
+        const titleRaw = get("title");
         const body = get("body");
         const reviewer_name = get("reviewer_name");
         const reviewer_email = get("reviewer_email");
@@ -519,7 +519,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const productGid = handleToGid.get(handle);
         if (!productGid) throw new Error(`商品が見つかりません: ${handle}`);
         if (!(rating >= 1 && rating <= 5)) throw new Error(`rating は 1-5: ${get("rating")}`);
-        if (!title) throw new Error("title が空");
+        // title は任意 (空なら body の先頭から自動生成する)
         if (!body || body.length < 1) throw new Error("body が空");
         if (!reviewer_name) throw new Error("reviewer_name が空");
         const validSource = ["verified_purchase", "gift_recipient", "unverified"];
@@ -530,7 +530,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const fields: Array<{ key: string; value: string }> = [
           { key: "product_ref", value: productGid },
           { key: "rating", value: String(rating) },
-          { key: "title", value: title },
+          { key: "title", value: (titleRaw || (body || "").slice(0, 40)) },
           { key: "body", value: body },
           { key: "reviewer_name", value: reviewer_name },
           { key: "reviewer_email", value: reviewer_email || `admin@${session.shop}` },
@@ -672,13 +672,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const reviewer_email = String(formData.get("reviewer_email") || "").trim().slice(0, 200);
 
     if (rating < 1 || rating > 5) return { ok: false, error: "評価を 1〜5 で選択してください", intent };
-    if (!title) return { ok: false, error: "タイトルを入力してください", intent };
+    // title は任意 (空なら body 先頭から自動派生)
     if (body.length < 10) return { ok: false, error: "本文を 10 文字以上で入力してください", intent };
     if (!reviewer_name) return { ok: false, error: "表示名を入力してください", intent };
 
     const fields = [
       { key: "rating", value: String(rating) },
-      { key: "title", value: title },
+      { key: "title", value: (titleRaw || (body || "").slice(0, 40)) },
       { key: "body", value: body },
       { key: "reviewer_name", value: reviewer_name },
       { key: "reviewer_email", value: reviewer_email },
@@ -841,14 +841,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     if (!productId.startsWith("gid://shopify/Product/")) return { ok: false, error: "商品を選択してください", intent };
     if (rating < 1 || rating > 5) return { ok: false, error: "評価を 1〜5 で選択してください", intent };
-    if (!title) return { ok: false, error: "タイトルを入力してください", intent };
+    // title は任意 (空なら body 先頭から自動派生)
     if (body.length < 10) return { ok: false, error: "本文を 10 文字以上で入力してください", intent };
     if (!reviewer_name) return { ok: false, error: "表示名を入力してください", intent };
 
     const fields = [
       { key: "product_ref", value: productId },
       { key: "rating", value: String(rating) },
-      { key: "title", value: title },
+      { key: "title", value: (titleRaw || (body || "").slice(0, 40)) },
       { key: "body", value: body },
       { key: "reviewer_name", value: reviewer_name },
       { key: "reviewer_email", value: reviewer_email || `admin@${session.shop}` },
@@ -964,7 +964,7 @@ function ReviewStorefrontPreview({ review }: { review: ReviewItem }) {
         )}
       </div>
       <h3 style={{ margin: "4px 0 8px", fontSize: 17, fontWeight: 700, color: "#111827", lineHeight: 1.4 }}>
-        {review.title || "(タイトルなし)"}
+        
       </h3>
       <p style={{ margin: 0, fontSize: 14, color: "#374151", lineHeight: 1.8, whiteSpace: "pre-wrap" }}>
         {review.body}
@@ -1201,7 +1201,7 @@ export default function ReviewsTab() {
     fd.set("intent", "create");
     fd.set("productId", pickedProduct.id);
     fd.set("rating", formRating);
-    fd.set("title", formTitle);
+    fd.set("title", formTitle || formBody.slice(0, 40));
     fd.set("body", formBody);
     fd.set("reviewer_name", formName);
     fd.set("reviewer_email", formEmail);
@@ -1221,7 +1221,6 @@ export default function ReviewsTab() {
 
   const canSubmitCreate =
     !!pickedProduct &&
-    !!formTitle.trim() &&
     formBody.trim().length >= 10 &&
     !!formName.trim() &&
     fetcher.state === "idle";
@@ -1310,7 +1309,7 @@ export default function ReviewsTab() {
     fd.set("intent", "edit");
     fd.set("reviewId", detailReview.id);
     fd.set("rating", editRating);
-    fd.set("title", editTitle);
+    fd.set("title", editTitle || editBody.slice(0, 40));
     fd.set("body", editBody);
     fd.set("reviewer_name", editName);
     fd.set("reviewer_email", editEmail);
@@ -1319,7 +1318,6 @@ export default function ReviewsTab() {
 
   const canSubmitEdit =
     !!detailReview &&
-    !!editTitle.trim() &&
     editBody.trim().length >= 10 &&
     !!editName.trim() &&
     fetcher.state === "idle";
@@ -1427,7 +1425,7 @@ export default function ReviewsTab() {
       <IndexTable.Cell>
         <BlockStack gap="050">
           <Text as="span" variant="bodyMd" fontWeight="semibold" truncate>
-            {r.title || "(タイトルなし)"}
+            {r.title || ""}
           </Text>
           <Text as="span" variant="bodySm" tone="subdued" truncate>
             {r.body.slice(0, 80)}
@@ -1571,7 +1569,7 @@ export default function ReviewsTab() {
       <Modal
         open={!!detailReview}
         onClose={closeDetail}
-        title={detailReview ? `レビュー詳細 — ${detailReview.title || "(タイトルなし)"}` : "詳細"}
+        title={detailReview ? `レビュー詳細 — ${detailReview.title || ""}` : "詳細"}
         size="large"
         primaryAction={
           detailReview && detailReview.status === "pending"
@@ -1776,15 +1774,6 @@ export default function ReviewsTab() {
                         onChange={setEditRating}
                       />
                       <TextField
-                        label="タイトル"
-                        value={editTitle}
-                        onChange={setEditTitle}
-                        autoComplete="off"
-                        maxLength={60}
-                        showCharacterCount
-                        requiredIndicator
-                      />
-                      <TextField
                         label="本文 (10 文字以上)"
                         value={editBody}
                         onChange={setEditBody}
@@ -1823,7 +1812,7 @@ export default function ReviewsTab() {
                         <span style={{ color: "#d1d5db" }}>{"★".repeat(Math.max(0, 5 - detailReview.rating))}</span>
                         <span style={{ marginLeft: 8, fontSize: 14, color: "#6b7280" }}>({detailReview.rating} / 5)</span>
                       </Text>
-                      <Text as="h4" variant="headingMd">{detailReview.title || "(タイトルなし)"}</Text>
+                      <Text as="h4" variant="headingMd">{detailReview.title || ""}</Text>
                       <div style={{ whiteSpace: "pre-wrap", padding: "8px 12px", background: "#f9fafb", borderRadius: 8, fontSize: 14, lineHeight: 1.8 }}>
                         {detailReview.body}
                       </div>
@@ -1968,17 +1957,6 @@ export default function ReviewsTab() {
                 ]}
                 value={formRating}
                 onChange={setFormRating}
-              />
-
-              <TextField
-                label="タイトル"
-                value={formTitle}
-                onChange={setFormTitle}
-                autoComplete="off"
-                maxLength={60}
-                showCharacterCount
-                placeholder="例: 想像以上の高品質でした"
-                requiredIndicator
               />
 
               <TextField
