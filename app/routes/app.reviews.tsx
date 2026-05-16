@@ -949,7 +949,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 // ─────────────────────────────────────────────
 // Storefront preview card (matches typical Astromeda review card styling)
 // ─────────────────────────────────────────────
-function ReviewStorefrontPreview({ review }: { review: ReviewItem }) {
+function ReviewStorefrontPreview({ review, productImage, productTitle }: { review: ReviewItem; productImage?: string | null; productTitle?: string }) {
   const dateText = new Date(review.created_at).toLocaleDateString("ja-JP", {
     year: "numeric", month: "long", day: "numeric",
   });
@@ -964,6 +964,14 @@ function ReviewStorefrontPreview({ review }: { review: ReviewItem }) {
         fontFamily: "-apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif",
       }}
     >
+      {(productImage || productTitle) ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", background: "#f9fafb", borderRadius: 8, marginBottom: 12 }}>
+          {productImage ? (
+            <img src={productImage} alt={productTitle || ""} style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 6, border: "1px solid #e5e7eb" }} />
+          ) : null}
+          <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", lineHeight: 1.4 }}>{productTitle || ""}</div>
+        </div>
+      ) : null}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
         <span style={{ color: "#0d9488", fontSize: 22, letterSpacing: 2 }}>
           {"★".repeat(review.rating)}
@@ -1627,7 +1635,7 @@ export default function ReviewsTab() {
                   {detailReview.product ? (
                     <InlineStack gap="400" blockAlign="center">
                       {detailReview.product.image_url ? (
-                        <Thumbnail source={detailReview.product.image_url} alt={detailReview.product.title} size="medium" />
+                        <Thumbnail source={detailReview.product.image_url} alt={detailReview.product.title} size="large" />
                       ) : null}
                       <BlockStack gap="100">
                         <Text as="span" variant="bodyMd" fontWeight="bold">{detailReview.product.title}</Text>
@@ -1922,7 +1930,17 @@ export default function ReviewsTab() {
                       : "承認すると、ストアフロントの商品ページに以下の形で表示されます。"}
                   </Text>
                   <Box padding="200" background="bg-surface-secondary" borderRadius="200">
-                    <ReviewStorefrontPreview review={detailReview} />
+                    <ReviewStorefrontPreview
+                      review={editMode ? {
+                        ...detailReview,
+                        rating: parseInt(editRating, 10) || detailReview.rating,
+                        body: editBody || detailReview.body,
+                        reviewer_name: editName || detailReview.reviewer_name,
+                        reviewer_email: editEmail,
+                      } : detailReview}
+                      productImage={detailReview.product?.image_url}
+                      productTitle={detailReview.product?.title}
+                    />
                   </Box>
                 </BlockStack>
               </Card>
