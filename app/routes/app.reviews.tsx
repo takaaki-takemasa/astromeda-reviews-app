@@ -394,6 +394,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         if (!validSource.includes(source_type)) source_type = "unverified";
         const validStatus = ["pending", "approved", "rejected"];
         if (!validStatus.includes(status)) status = "pending";
+        // posted_at (CSV由来の投稿日時): ISO 8601 のみ受理
+        let posted_at = get("posted_at");
+        if (posted_at) {
+          const d = new Date(posted_at);
+          posted_at = isFinite(d.getTime()) ? d.toISOString() : "";
+        }
 
         const fields: Array<{ key: string; value: string }> = [
           { key: "product_ref", value: productGid },
@@ -404,6 +410,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           { key: "reviewer_email", value: reviewer_email || `admin@${session.shop}` },
           { key: "source_type", value: source_type },
           { key: "status", value: status },
+          ...(posted_at ? [{ key: "posted_at", value: posted_at }] : []),
         ];
 
         if (id && id.startsWith("gid://shopify/Metaobject/")) {
@@ -526,6 +533,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         if (!validSource.includes(source_type)) source_type = "unverified";
         const validStatus = ["pending", "approved", "rejected"];
         if (!validStatus.includes(status)) status = "pending";
+        // posted_at (CSV由来の投稿日時): ISO 8601 のみ受理
+        let posted_at = get("posted_at");
+        if (posted_at) {
+          const d = new Date(posted_at);
+          posted_at = isFinite(d.getTime()) ? d.toISOString() : "";
+        }
 
         const fields: Array<{ key: string; value: string }> = [
           { key: "product_ref", value: productGid },
@@ -536,6 +549,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           { key: "reviewer_email", value: reviewer_email || `admin@${session.shop}` },
           { key: "source_type", value: source_type },
           { key: "status", value: status },
+          ...(posted_at ? [{ key: "posted_at", value: posted_at }] : []),
         ];
 
         if (id && id.startsWith("gid://shopify/Metaobject/")) {
