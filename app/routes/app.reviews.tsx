@@ -1147,7 +1147,7 @@ export default function ReviewsTab() {
       resolveFd.set("intent", "import_csv_resolve");
       resolveFd.set("handles", JSON.stringify(uniqueHandles));
       // Shopify Embedded App: App Bridge から session token を取得して Bearer 付与
-      const _sessionToken1 = await (window as any).shopify?.idToken?.();
+      const _sessionToken1 = await (shopify as any)?.idToken?.();
       const resolveRes = await fetch(window.location.pathname + window.location.search, {
         method: "POST",
         body: resolveFd,
@@ -1200,7 +1200,7 @@ export default function ReviewsTab() {
         chunkFd.set("handleToGid", JSON.stringify(handleToGid));
         chunkFd.set("rowOffset", String(processed + 2));
         // Shopify Embedded App: 各チャンクごとに fresh session token を取得
-        const _sessionToken2 = await (window as any).shopify?.idToken?.();
+        const _sessionToken2 = await (shopify as any)?.idToken?.();
         const chunkRes = await fetch(window.location.pathname + window.location.search, {
           method: "POST",
           body: chunkFd,
