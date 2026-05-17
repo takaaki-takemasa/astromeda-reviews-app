@@ -1121,6 +1121,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   };
 };
 
+// 翻訳 split helper
+const TRANSLATION_MARKER = "──── 日本語訳 ────";
+function splitTranslation(body) {
+  if (!body || !body.includes(TRANSLATION_MARKER)) {
+    return { original: body || "", translation: null };
+  }
+  const idx = body.indexOf(TRANSLATION_MARKER);
+  return {
+    original: body.slice(0, idx).trim(),
+    translation: body.slice(idx + TRANSLATION_MARKER.length).trim() || null,
+  };
+}
+
 // ─────────────────────────────────────────────
 // Storefront preview card (matches typical Astromeda review card styling)
 // ─────────────────────────────────────────────
@@ -1164,9 +1177,22 @@ function ReviewStorefrontPreview({ review, productImage, productTitle }: { revie
       <h3 style={{ margin: "4px 0 8px", fontSize: 17, fontWeight: 700, color: "#111827", lineHeight: 1.4 }}>
         
       </h3>
-      <p style={{ margin: 0, fontSize: 14, color: "#374151", lineHeight: 1.8, whiteSpace: "pre-wrap" }}>
-        {review.body}
-      </p>
+      {(() => {
+        const { original, translation } = splitTranslation(review.body);
+        return (
+          <>
+            <p style={{ margin: 0, fontSize: 14, color: "#374151", lineHeight: 1.8, whiteSpace: "pre-wrap" }}>
+              {original}
+            </p>
+            {translation ? (
+              <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px dashed #cbd5e1" }}>
+                <span style={{ display: "inline-block", padding: "2px 8px", background: "#eef2ff", color: "#4338ca", borderRadius: 4, fontSize: 11, fontWeight: 700, marginBottom: 6 }}>🇯🇵 日本語訳</span>
+                <p style={{ margin: 0, fontSize: 13, color: "#6b7280", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{translation}</p>
+              </div>
+            ) : null}
+          </>
+        );
+      })()}
       <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid #f3f4f6", fontSize: 12, color: "#6b7280", display: "flex", justifyContent: "space-between" }}>
         <span>— {review.reviewer_name || "匿名"}</span>
         <span>{dateText}</span>
@@ -1794,9 +1820,20 @@ export default function ReviewsTab() {
         </div>
       </IndexTable.Cell>
       <IndexTable.Cell>
-        <div style={{ fontSize: 13, color: "#374151", lineHeight: 1.5, whiteSpace: "normal", wordBreak: "break-word", maxWidth: 400 }}>
-          {r.body}
-        </div>
+        {(() => {
+          const { original, translation } = splitTranslation(r.body);
+          return (
+            <div style={{ fontSize: 13, color: "#374151", lineHeight: 1.5, whiteSpace: "normal", wordBreak: "break-word", maxWidth: 400 }}>
+              <div>{original}</div>
+              {translation ? (
+                <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1px dashed #d1d5db", fontSize: 12, color: "#6b7280" }}>
+                  <span style={{ display: "inline-block", padding: "1px 6px", background: "#eef2ff", color: "#4338ca", borderRadius: 3, fontSize: 10, fontWeight: 600, marginRight: 6 }}>🇯🇵 訳</span>
+                  {translation}
+                </div>
+              ) : null}
+            </div>
+          );
+        })()}
       </IndexTable.Cell>
       <IndexTable.Cell>
         <div style={{ display: "flex", flexDirection: "column", gap: 2, maxWidth: 90, fontSize: 11, lineHeight: 1.3 }}>
@@ -2204,8 +2241,21 @@ export default function ReviewsTab() {
                         <span style={{ marginLeft: 8, fontSize: 14, color: "#6b7280" }}>({detailReview.rating} / 5)</span>
                       </Text>
                       <Text as="h4" variant="headingMd">{detailReview.title || ""}</Text>
-                      <div style={{ whiteSpace: "pre-wrap", padding: "8px 12px", background: "#f9fafb", borderRadius: 8, fontSize: 14, lineHeight: 1.8 }}>
-                        {detailReview.body}
+                      <div style={{ padding: "8px 12px", background: "#f9fafb", borderRadius: 8, fontSize: 14, lineHeight: 1.8 }}>
+                        {(() => {
+                          const { original, translation } = splitTranslation(detailReview.body);
+                          return (
+                            <>
+                              <div style={{ whiteSpace: "pre-wrap" }}>{original}</div>
+                              {translation ? (
+                                <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px dashed #cbd5e1" }}>
+                                  <span style={{ display: "inline-block", padding: "2px 8px", background: "#eef2ff", color: "#4338ca", borderRadius: 4, fontSize: 11, fontWeight: 700, marginBottom: 6 }}>🇯🇵 日本語訳</span>
+                                  <div style={{ whiteSpace: "pre-wrap", fontSize: 13, color: "#6b7280", lineHeight: 1.7 }}>{translation}</div>
+                                </div>
+                              ) : null}
+                            </>
+                          );
+                        })()}
                       </div>
                       <Text as="p" variant="bodySm" tone="subdued">
                         投稿日時: {new Date(detailReview.created_at).toLocaleString("ja-JP")}
