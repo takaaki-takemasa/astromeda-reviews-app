@@ -1708,31 +1708,33 @@ export default function ReviewsTab() {
       onClick={() => openDetail(r)}
     >
       <IndexTable.Cell>
-        <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start", minWidth: 80 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-start", minWidth: 120, paddingTop: 4, paddingBottom: 4 }}>
           <Text as="span" variant="bodyMd" fontWeight="semibold">
             {"★".repeat(r.rating)}
             <span style={{ color: "#ccc" }}>{"★".repeat(Math.max(0, 5 - r.rating))}</span>
           </Text>
-          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {r.status !== "approved" ? (
               <button
                 type="button"
                 onClick={(e) => changeStatusSingle(r.id, "approve", e)}
                 style={{
-                  fontSize: 10,
-                  padding: "2px 6px",
+                  fontSize: 13,
+                  padding: "8px 14px",
                   background: "#10b981",
                   color: "#fff",
                   border: "none",
-                  borderRadius: 3,
+                  borderRadius: 6,
                   cursor: "pointer",
-                  fontWeight: 600,
+                  fontWeight: 700,
                   whiteSpace: "nowrap",
-                  lineHeight: 1.2,
+                  lineHeight: 1.3,
+                  minHeight: 36,
+                  boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
                 }}
-                title="このレビューを承認して公開"
+                title="このレビューを承認して公開する"
               >
-                ✓承認
+                ✓ 承認する
               </button>
             ) : null}
             {r.status !== "rejected" ? (
@@ -1740,49 +1742,50 @@ export default function ReviewsTab() {
                 type="button"
                 onClick={(e) => changeStatusSingle(r.id, "reject", e)}
                 style={{
-                  fontSize: 10,
-                  padding: "2px 6px",
+                  fontSize: 13,
+                  padding: "8px 14px",
                   background: "#fff",
                   color: "#dc2626",
-                  border: "1px solid #fca5a5",
-                  borderRadius: 3,
+                  border: "1.5px solid #fca5a5",
+                  borderRadius: 6,
                   cursor: "pointer",
-                  fontWeight: 600,
+                  fontWeight: 700,
                   whiteSpace: "nowrap",
-                  lineHeight: 1.2,
+                  lineHeight: 1.3,
+                  minHeight: 36,
+                  boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
                 }}
                 title="このレビューを非表示にする"
               >
-                ✕非表示
+                ✕ 非表示
               </button>
             ) : null}
           </div>
         </div>
       </IndexTable.Cell>
       <IndexTable.Cell>
-        <InlineStack gap="200" blockAlign="center" wrap={false}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 4, paddingBottom: 4 }}>
           {r.product?.image_url ? (
             <Thumbnail source={r.product.image_url} alt={r.product.title} size="small" />
           ) : (
-            <div style={{ width: 36, height: 36, background: "#f3f4f6", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: "#9ca3af" }}>NO IMG</div>
+            <div style={{ width: 36, height: 36, background: "#f3f4f6", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: "#9ca3af", flexShrink: 0 }}>NO IMG</div>
           )}
           <span style={{
             display: "block",
-            maxWidth: 220,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
+            maxWidth: 240,
             fontSize: 13,
+            lineHeight: 1.4,
+            wordBreak: "break-word",
+            whiteSpace: "normal",
           }}>
             {r.product?.title || "(商品削除)"}
           </span>
-        </InlineStack>
+        </div>
       </IndexTable.Cell>
       <IndexTable.Cell>
-        <Text as="span" variant="bodySm" tone="subdued" truncate>
-          {r.body.slice(0, 50)}
-          {r.body.length > 50 ? "…" : ""}
-        </Text>
+        <div style={{ fontSize: 13, color: "#374151", lineHeight: 1.5, whiteSpace: "normal", wordBreak: "break-word", maxWidth: 400 }}>
+          {r.body}
+        </div>
       </IndexTable.Cell>
       <IndexTable.Cell>
         <BlockStack gap="050">
