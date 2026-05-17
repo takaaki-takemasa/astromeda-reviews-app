@@ -1708,48 +1708,12 @@ export default function ReviewsTab() {
       onClick={() => openDetail(r)}
     >
       <IndexTable.Cell>
-        <Text as="span" variant="bodyMd" fontWeight="semibold">
-          {"★".repeat(r.rating)}
-          <span style={{ color: "#ccc" }}>{"★".repeat(Math.max(0, 5 - r.rating))}</span>
-        </Text>
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        <InlineStack gap="200" blockAlign="center" wrap={false}>
-          {r.product?.image_url ? (
-            <Thumbnail source={r.product.image_url} alt={r.product.title} size="small" />
-          ) : (
-            <div style={{ width: 36, height: 36, background: "#f3f4f6", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: "#9ca3af" }}>NO IMG</div>
-          )}
-          <span style={{
-            display: "block",
-            maxWidth: 220,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            fontSize: 13,
-          }}>
-            {r.product?.title || "(商品削除)"}
-          </span>
-        </InlineStack>
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        <Text as="span" variant="bodySm" tone="subdued" truncate>
-          {r.body.slice(0, 50)}
-          {r.body.length > 50 ? "…" : ""}
-        </Text>
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        <BlockStack gap="050">
-          <Text as="span" variant="bodySm" fontWeight="semibold">{r.reviewer_name || "—"}</Text>
-          <Text as="span" variant="bodySm" tone="subdued">
-            {new Date(r.created_at).toLocaleDateString("ja-JP", { year: "2-digit", month: "numeric", day: "numeric" })}
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start", minWidth: 80 }}>
+          <Text as="span" variant="bodyMd" fontWeight="semibold">
+            {"★".repeat(r.rating)}
+            <span style={{ color: "#ccc" }}>{"★".repeat(Math.max(0, 5 - r.rating))}</span>
           </Text>
-        </BlockStack>
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 90 }}>
-          {statusBadge(r.status)}
-          <div style={{ display: "flex", gap: 4, flexWrap: "nowrap" }}>
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
             {r.status !== "approved" ? (
               <button
                 type="button"
@@ -1795,13 +1759,47 @@ export default function ReviewsTab() {
           </div>
         </div>
       </IndexTable.Cell>
+      <IndexTable.Cell>
+        <InlineStack gap="200" blockAlign="center" wrap={false}>
+          {r.product?.image_url ? (
+            <Thumbnail source={r.product.image_url} alt={r.product.title} size="small" />
+          ) : (
+            <div style={{ width: 36, height: 36, background: "#f3f4f6", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: "#9ca3af" }}>NO IMG</div>
+          )}
+          <span style={{
+            display: "block",
+            maxWidth: 220,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            fontSize: 13,
+          }}>
+            {r.product?.title || "(商品削除)"}
+          </span>
+        </InlineStack>
+      </IndexTable.Cell>
+      <IndexTable.Cell>
+        <Text as="span" variant="bodySm" tone="subdued" truncate>
+          {r.body.slice(0, 50)}
+          {r.body.length > 50 ? "…" : ""}
+        </Text>
+      </IndexTable.Cell>
+      <IndexTable.Cell>
+        <BlockStack gap="050">
+          <Text as="span" variant="bodySm" fontWeight="semibold">{r.reviewer_name || "—"}</Text>
+          <Text as="span" variant="bodySm" tone="subdued">
+            {new Date(r.created_at).toLocaleDateString("ja-JP", { year: "2-digit", month: "numeric", day: "numeric" })}
+          </Text>
+        </BlockStack>
+      </IndexTable.Cell>
+      <IndexTable.Cell>{statusBadge(r.status)}</IndexTable.Cell>
     </IndexTable.Row>
   ));
 
   return (
     <Page
       title="レビュー一覧"
-      subtitle="行クリックで詳細表示／状態列の ✓承認 / ✕非表示 ボタンで個別ステータス変更／チェックボックスで一括操作"
+      subtitle="行クリックで詳細表示／評価の下の ✓承認 / ✕非表示 で個別変更／チェックボックスで一括操作"
       primaryAction={{ content: "新規レビューを作成", onAction: openCreate }}
       secondaryActions={
         selectedResources.length > 0
