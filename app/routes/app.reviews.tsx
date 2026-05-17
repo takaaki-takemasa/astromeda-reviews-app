@@ -527,7 +527,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const fields: Array<{ key: string; value: string }> = [
           { key: "product_ref", value: productGid },
           { key: "rating", value: String(rating) },
-          { key: "title", value: (titleRaw || (body || "").slice(0, 40)) },
+          { key: "title", value: (() => {
+            if (titleRaw) return titleRaw.replace(/[\r\n]+/g, " ").trim().slice(0, 100);
+            // 翻訳マーカーより前の部分を採用 (改行も除去)
+            const _bodyForTitle = (body || "").split("──── 日本語訳 ────")[0];
+            return _bodyForTitle.replace(/[\r\n]+/g, " ").trim().slice(0, 40);
+          })() },
           { key: "body", value: body },
           { key: "reviewer_name", value: reviewer_name },
           { key: "reviewer_email", value: reviewer_email || `admin@${session.shop}` },
@@ -677,7 +682,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const fields: Array<{ key: string; value: string }> = [
           { key: "product_ref", value: productGid },
           { key: "rating", value: String(rating) },
-          { key: "title", value: (titleRaw || (body || "").slice(0, 40)) },
+          { key: "title", value: ((titleRaw || (body || "").split("──── 日本語訳 ────")[0]) || "").replace(/[\r\n]+/g, " ").trim().slice(0, 100) || "(タイトルなし)" },
           { key: "body", value: body },
           { key: "reviewer_name", value: reviewer_name },
           { key: "reviewer_email", value: reviewer_email || `admin@${session.shop}` },
@@ -826,7 +831,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     const fields = [
       { key: "rating", value: String(rating) },
-      { key: "title", value: (titleRaw || (body || "").slice(0, 40)) },
+      { key: "title", value: ((titleRaw || (body || "").split("──── 日本語訳 ────")[0]) || "").replace(/[\r\n]+/g, " ").trim().slice(0, 100) || "(タイトルなし)" },
       { key: "body", value: body },
       { key: "reviewer_name", value: reviewer_name },
       { key: "reviewer_email", value: reviewer_email },
@@ -996,7 +1001,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const fields = [
       { key: "product_ref", value: productId },
       { key: "rating", value: String(rating) },
-      { key: "title", value: (titleRaw || (body || "").slice(0, 40)) },
+      { key: "title", value: ((titleRaw || (body || "").split("──── 日本語訳 ────")[0]) || "").replace(/[\r\n]+/g, " ").trim().slice(0, 100) || "(タイトルなし)" },
       { key: "body", value: body },
       { key: "reviewer_name", value: reviewer_name },
       { key: "reviewer_email", value: reviewer_email || `admin@${session.shop}` },
