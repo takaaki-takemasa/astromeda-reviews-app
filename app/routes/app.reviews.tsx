@@ -162,6 +162,15 @@ const EDIT_REVIEW_MUTATION = `#graphql
   }
 `;
 
+const DELETE_REVIEW_MUTATION = `#graphql
+  mutation DeleteReview($id: ID!) {
+    metaobjectDelete(id: $id) {
+      deletedId
+      userErrors { field message code }
+    }
+  }
+`;
+
 const STAGED_UPLOADS_CREATE_MUTATION = `#graphql
   mutation StagedUploadsCreate($input: [StagedUploadInput!]!) {
     stagedUploadsCreate(input: $input) {
@@ -1049,6 +1058,47 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return { ok: true, created: 1, new_id: newId, intent };
   }
 
+  // ─── intent: delete (個別 / 一括 両対応) ───
+  if (intent === "delete") {
+    const idsRaw = formData.get("ids") as string | null;
+    const ids = idsRaw ? idsRaw.split(",").filter(Boolean) : [];
+    if (ids.length === 0) {
+      return { ok: false, error: "削除する ID が指定されていません", intent };
+    }
+    const results = await Promise.all(
+      ids.map(async (id) => {
+        try {
+          const res = await admin.graphql(DELETE_REVIEW_MUTATION, { variables: { id } });
+          const json = (await res.json()) as { data?: { metaobjectDelete?: { deletedId?: string; userErrors: Array<{ message: string }> } } };
+          const errs = json.data?.metaobjectDelete?.userErrors ?? [];
+          if (errs.length > 0) {
+            return { id, ok: false, error: errs.map((e) => e.message).join(", ") };
+          }
+          // 監査ログに記録
+          await appendAuditLogSafe({
+            admin,
+            actor: session.shop,
+            action: "review.delete",
+            resource_id: id,
+            resource_type: "astromeda_review",
+            request,
+            metadata: { batch_size: ids.length },
+          });
+          return { id, ok: true };
+        } catch (e: any) {
+          return { id, ok: false, error: e?.message ?? String(e) };
+        }
+      }),
+    );
+    return {
+      ok: results.every((r) => r.ok),
+      deleted: results.filter((r) => r.ok).length,
+      failed: results.filter((r) => !r.ok).length,
+      intent,
+      errors: results.filter((r) => !r.ok).map((r) => ({ id: r.id, error: r.error })),
+    };
+  }
+
   // ─── intent: approve / reject ───
   const idsRaw = formData.get("ids") as string | null;
   const ids = idsRaw ? idsRaw.split(",") : [];
@@ -1235,11 +1285,26 @@ export default function ReviewsTab() {
     reviews.map((r) => ({ id: r.id })),
   );
 
-  const bulkSubmit = (intent: "approve" | "reject") => {
+  const bulkSubmit = (intent: "approve" | "reject" | "delete") => {
     if (selectedResources.length === 0) return;
+    if (intent === "delete") {
+      // 削除は確認必須
+      const ok = window.confirm(`選択した ${selectedResources.length} 件のレビューを完全に削除します。この操作は元に戻せません。本当に削除しますか？`);
+      if (!ok) return;
+    }
     const fd = new FormData();
     fd.set("intent", intent);
     fd.set("ids", selectedResources.join(","));
+    fetcher.submit(fd, { method: "post" });
+  };
+
+  const deleteSingle = (id: string, title: string) => {
+    const label = title?.trim() || "(タイトルなし)";
+    const ok = window.confirm(`「${label}」を完全に削除します。この操作は元に戻せません。本当に削除しますか？`);
+    if (!ok) return;
+    const fd = new FormData();
+    fd.set("intent", "delete");
+    fd.set("ids", id);
     fetcher.submit(fd, { method: "post" });
   };
 
@@ -1716,13 +1781,16 @@ export default function ReviewsTab() {
               ? [
                   { content: `${selectedResources.length} 件を承認`, onAction: () => bulkSubmit("approve") },
                   { content: `${selectedResources.length} 件を非表示にする`, destructive: true, onAction: () => bulkSubmit("reject") },
+                  { content: `${selectedResources.length} 件を完全削除`, destructive: true, onAction: () => bulkSubmit("delete") },
                 ]
               : tab === "approved"
               ? [
                   { content: `${selectedResources.length} 件を非表示にする`, destructive: true, onAction: () => bulkSubmit("reject") },
+                  { content: `${selectedResources.length} 件を完全削除`, destructive: true, onAction: () => bulkSubmit("delete") },
                 ]
               : [
                   { content: `${selectedResources.length} 件を承認 (再公開)`, onAction: () => bulkSubmit("approve") },
+                  { content: `${selectedResources.length} 件を完全削除`, destructive: true, onAction: () => bulkSubmit("delete") },
                 ])
           : []
       }
@@ -1731,6 +1799,9 @@ export default function ReviewsTab() {
         <Layout.Section>
           {fetcher.data?.ok && fetcher.data.updated && fetcher.data.updated > 0 ? (
             <Banner tone="success" title={`${fetcher.data.updated} 件を更新しました`} onDismiss={() => {}} />
+          ) : null}
+          {fetcher.data?.ok && fetcher.data.intent === "delete" && fetcher.data.deleted ? (
+            <Banner tone="success" title={`${fetcher.data.deleted} 件のレビューを完全削除しました`} onDismiss={() => {}} />
           ) : null}
           {fetcher.data?.ok && fetcher.data.created ? (
             <Banner tone="success" title="新規レビューを作成しました (承認待ちタブに表示されます)" onDismiss={() => {}} />
@@ -1827,6 +1898,24 @@ export default function ReviewsTab() {
         onClose={closeDetail}
         title={detailReview ? `レビュー詳細 — ${detailReview.title || ""}` : "詳細"}
         size="large"
+        footer={
+          detailReview ? (
+            <InlineStack align="start">
+              <Button
+                tone="critical"
+                variant="primary"
+                onClick={() => {
+                  if (detailReview) {
+                    deleteSingle(detailReview.id, detailReview.title || "");
+                    closeDetail();
+                  }
+                }}
+              >
+                🗑️ このレビューを削除
+              </Button>
+            </InlineStack>
+          ) : null
+        }
         primaryAction={
           detailReview
             ? detailReview.status === "pending"
