@@ -1746,26 +1746,28 @@ export default function ReviewsTab() {
       </IndexTable.Cell>
       <IndexTable.Cell>{sourceBadge(r.source_type)}</IndexTable.Cell>
       <IndexTable.Cell>
-        <BlockStack gap="100">
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 90 }}>
           {statusBadge(r.status)}
-          <InlineStack gap="100" wrap={false}>
+          <div style={{ display: "flex", gap: 4, flexWrap: "nowrap" }}>
             {r.status !== "approved" ? (
               <button
                 type="button"
                 onClick={(e) => changeStatusSingle(r.id, "approve", e)}
                 style={{
-                  fontSize: 11,
-                  padding: "3px 8px",
+                  fontSize: 10,
+                  padding: "2px 6px",
                   background: "#10b981",
                   color: "#fff",
                   border: "none",
-                  borderRadius: 4,
+                  borderRadius: 3,
                   cursor: "pointer",
                   fontWeight: 600,
+                  whiteSpace: "nowrap",
+                  lineHeight: 1.2,
                 }}
                 title="このレビューを承認して公開"
               >
-                ✓ 承認
+                ✓承認
               </button>
             ) : null}
             {r.status !== "rejected" ? (
@@ -1773,22 +1775,24 @@ export default function ReviewsTab() {
                 type="button"
                 onClick={(e) => changeStatusSingle(r.id, "reject", e)}
                 style={{
-                  fontSize: 11,
-                  padding: "3px 8px",
+                  fontSize: 10,
+                  padding: "2px 6px",
                   background: "#fff",
                   color: "#dc2626",
                   border: "1px solid #fca5a5",
-                  borderRadius: 4,
+                  borderRadius: 3,
                   cursor: "pointer",
                   fontWeight: 600,
+                  whiteSpace: "nowrap",
+                  lineHeight: 1.2,
                 }}
                 title="このレビューを非表示にする"
               >
-                ✕ 非表示
+                ✕非表示
               </button>
             ) : null}
-          </InlineStack>
-        </BlockStack>
+          </div>
+        </div>
       </IndexTable.Cell>
       <IndexTable.Cell>
         <Text as="span" variant="bodySm">
