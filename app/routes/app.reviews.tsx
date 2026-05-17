@@ -329,6 +329,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     try { handles = JSON.parse(String(formData.get("handles") || "[]")); } catch { handles = []; }
     if (!Array.isArray(handles)) return { ok: false, error: "handles が不正です", intent };
 
+    const resolveStart = Date.now();
     const cleanHandles = handles.filter((h) => h && typeof h === "string");
     const handleToGid: Record<string, string> = {};
     const unresolved: string[] = [];
@@ -348,15 +349,23 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       `;
       const variables: Record<string, string> = {};
       batch.forEach((h, idx) => { variables[`h${idx}`] = h; });
-      const res = await admin.graphql(queryStr, { variables });
-      const json = (await res.json()) as { data?: Record<string, { id?: string; handle?: string } | null> };
-      batch.forEach((h, idx) => {
-        const node = json.data?.[`h${idx}`];
-        if (node?.id) handleToGid[h] = node.id;
-        else unresolved.push(h);
-      });
+      try {
+        const res = await admin.graphql(queryStr, { variables });
+        const json = (await res.json()) as { data?: Record<string, { id?: string; handle?: string } | null>; errors?: any };
+        if (json.errors) {
+          return { ok: false, error: `Shopify GraphQL error: ${JSON.stringify(json.errors)}`, intent };
+        }
+        batch.forEach((h, idx) => {
+          const node = json.data?.[`h${idx}`];
+          if (node?.id) handleToGid[h] = node.id;
+          else unresolved.push(h);
+        });
+      } catch (e: any) {
+        return { ok: false, error: `resolve batch failed: ${e?.message ?? String(e)}`, intent };
+      }
     }
-    return { ok: true, intent, handleToGid, unresolved };
+    const elapsed = Date.now() - resolveStart;
+    return { ok: true, intent, handleToGid, unresolved, _debug: { elapsedMs: elapsed, batchCount: Math.ceil(cleanHandles.length / 50) } };
   }
 
   // ─── intent: import_csv_chunk (process a small chunk of rows; client-side chunking) ───
@@ -384,12 +393,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
 
     const results = { created: 0, updated: 0, errors: [] as Array<{ row: number; error: string }> };
+    const chunkStart = Date.now();
+    let lastRowLog = "";
 
-    // 修正(2026-05-17): 直列 → 並列化 (バッチ 5)。Vercel timeout 回避。
-    const CONCURRENCY = 5;
-    const processRow = async (r: number): Promise<void> => {
+    for (let r = 0; r < rows.length; r++) {
       const row = rows[r];
-      if (!Array.isArray(row) || row.every((c) => !c || !String(c).trim())) return;
+      if (!Array.isArray(row) || row.every((c) => !c || !String(c).trim())) continue;
       try {
         const get = (k: string) => (idxOf(k) >= 0 ? String(row[idxOf(k)] ?? "").trim() : "");
         const id = get("id");
@@ -454,18 +463,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           results.created++;
         }
       } catch (e: any) {
+        lastRowLog = `row ${rowOffset + r}: ${e?.message ?? String(e)}`;
         results.errors.push({ row: rowOffset + r, error: e?.message ?? String(e) });
       }
-    };
-
-    // バッチ CONCURRENCY 並列で処理
-    for (let i = 0; i < rows.length; i += CONCURRENCY) {
-      const batch: number[] = [];
-      for (let j = i; j < Math.min(i + CONCURRENCY, rows.length); j++) batch.push(j);
-      await Promise.all(batch.map((r) => processRow(r)));
     }
 
-    return { ok: true, intent, csvImport: results };
+    const chunkElapsed = Date.now() - chunkStart;
+    return { ok: true, intent, csvImport: results, _debug: { chunkElapsed, lastRowLog, rowsProcessed: rows.length } };
   }
 
   // ─── intent: import_csv (admin uploads CSV → bulk create/update) ───
