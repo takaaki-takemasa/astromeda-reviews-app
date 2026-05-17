@@ -1105,6 +1105,7 @@ function ReviewStorefrontPreview({ review, productImage, productTitle }: { revie
   const dateText = new Date(review.created_at).toLocaleDateString("ja-JP", {
     year: "numeric", month: "long", day: "numeric",
   });
+
   return (
     <div
       style={{
@@ -1156,6 +1157,9 @@ function ReviewStorefrontPreview({ review, productImage, productTitle }: { revie
 // ─────────────────────────────────────────────
 export default function ReviewsTab() {
   const { tab, reviews, pageInfo, shop, pagination } = useLoaderData<typeof loader>();
+
+  // pagination bar inline JSX (上段+下段で使い回し)
+  // この変数は ReviewsTab 内で定義する必要がある (pagination が scope に入っているため)
   const fetcher = useFetcher<ActionResult>();
   const importFetcher = useFetcher<any>();
   // fetcher.submit の Promise wrap (CSV import で使う)
@@ -1164,6 +1168,57 @@ export default function ReviewsTab() {
   useEffect(() => { importFetcherRef.current = importFetcher; }, [importFetcher]);
   const detailFetcher = useFetcher<ActionResult>();
   const [, setSearchParams] = useSearchParams();
+
+  // pagination bar inline JSX
+  const paginationBar = pagination.totalCount > 0 ? (
+    <Card>
+      <InlineStack align="space-between" blockAlign="center" gap="400">
+        <div style={{ fontSize: 14, color: "#374151", lineHeight: 1.4 }}>
+          全 <strong style={{ fontSize: 16, color: "#111827" }}>{pagination.totalCount}</strong> 件中{" "}
+          <strong style={{ fontSize: 16, color: "#111827" }}>
+            {(pagination.currentPage - 1) * pagination.pageSize + 1}
+            {" - "}
+            {Math.min(pagination.currentPage * pagination.pageSize, pagination.totalCount)}
+          </strong>
+          {" 件を表示中"}
+          {pagination.totalPages > 1 ? (
+            <span style={{ marginLeft: 12, padding: "3px 10px", background: "#f3f4f6", borderRadius: 6, fontWeight: 600 }}>
+              ページ {pagination.currentPage} / {pagination.totalPages}
+            </span>
+          ) : null}
+        </div>
+        {pagination.totalPages > 1 ? (
+          <InlineStack gap="200">
+            <Button
+              disabled={!(pagination.currentPage > 1)}
+              onClick={() => {
+                const history = [...pagination.cursorHistory];
+                history.pop();
+                if (history.length === 0) {
+                  setSearchParams({ tab });
+                } else {
+                  const prevCursor = history[history.length - 1];
+                  setSearchParams({ tab, cursor: prevCursor, cursors: history.join(",") });
+                }
+              }}
+            >
+              ← 前のページ
+            </Button>
+            <Button
+              variant="primary"
+              disabled={!pageInfo.hasNextPage}
+              onClick={() => {
+                const newHistory = pagination.cursorHistory.concat([pageInfo.endCursor ?? ""]).filter(Boolean);
+                setSearchParams({ tab, cursor: pageInfo.endCursor ?? "", cursors: newHistory.join(",") });
+              }}
+            >
+              次のページ →
+            </Button>
+          </InlineStack>
+        ) : null}
+      </InlineStack>
+    </Card>
+  ) : null;
 
   const handleTabChange = useCallback(
     (idx: number) => {
@@ -1724,6 +1779,8 @@ export default function ReviewsTab() {
             </Button>
           </InlineStack>
 
+          {/* 上段: pagination bar */}
+          {paginationBar}
           <Card>
             <BlockStack gap="0">
               <Tabs tabs={tabs} selected={tabIndex < 0 ? 0 : tabIndex} onSelect={handleTabChange} />
@@ -1759,44 +1816,8 @@ export default function ReviewsTab() {
             </BlockStack>
           </Card>
 
-          {pagination.totalCount > 0 ? (
-            <InlineStack align="space-between" blockAlign="center">
-              <div style={{ fontSize: 13, color: "#6b7280" }}>
-                全 <strong style={{ color: "#111827", fontSize: 14 }}>{pagination.totalCount}</strong> 件中{" "}
-                <strong style={{ color: "#111827", fontSize: 14 }}>
-                  {(pagination.currentPage - 1) * pagination.pageSize + 1}
-                  {" - "}
-                  {Math.min(pagination.currentPage * pagination.pageSize, pagination.totalCount)}
-                </strong>
-                {" 件を表示中"}
-                {pagination.totalPages > 1 ? (
-                  <span style={{ marginLeft: 12, padding: "2px 8px", background: "#f3f4f6", borderRadius: 4 }}>
-                    ページ {pagination.currentPage} / {pagination.totalPages}
-                  </span>
-                ) : null}
-              </div>
-              {(pagination.totalPages > 1) ? (
-                <Pagination
-                  hasNext={pageInfo.hasNextPage}
-                  onNext={() => {
-                    const newHistory = pagination.cursorHistory.concat([pageInfo.endCursor ?? ""]).filter(Boolean);
-                    setSearchParams({ tab, cursor: pageInfo.endCursor ?? "", cursors: newHistory.join(",") });
-                  }}
-                  hasPrevious={pagination.currentPage > 1}
-                  onPrevious={() => {
-                    const history = [...pagination.cursorHistory];
-                    history.pop();
-                    if (history.length === 0) {
-                      setSearchParams({ tab });
-                    } else {
-                      const prevCursor = history[history.length - 1];
-                      setSearchParams({ tab, cursor: prevCursor, cursors: history.join(",") });
-                    }
-                  }}
-                />
-              ) : null}
-            </InlineStack>
-          ) : null}
+          {/* 下段: pagination bar (totalCount > 0 のみ) */}
+          {paginationBar}
         </Layout.Section>
       </Layout>
 
