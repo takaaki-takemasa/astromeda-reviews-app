@@ -1146,8 +1146,14 @@ export default function ReviewsTab() {
       const resolveFd = new FormData();
       resolveFd.set("intent", "import_csv_resolve");
       resolveFd.set("handles", JSON.stringify(uniqueHandles));
+      // Shopify Embedded App: App Bridge から session token を取得して Bearer 付与
+      const _sessionToken1 = await (window as any).shopify?.idToken?.();
       const resolveRes = await fetch(window.location.pathname + window.location.search, {
-        method: "POST", body: resolveFd, signal: abort.signal, credentials: "include",
+        method: "POST",
+        body: resolveFd,
+        signal: abort.signal,
+        credentials: "include",
+        headers: _sessionToken1 ? { Authorization: `Bearer ${_sessionToken1}` } : {},
       });
       if (!resolveRes.ok) {
         const bodyText = await resolveRes.text().catch(() => "");
@@ -1193,8 +1199,14 @@ export default function ReviewsTab() {
         chunkFd.set("rows", JSON.stringify(chunks[c]));
         chunkFd.set("handleToGid", JSON.stringify(handleToGid));
         chunkFd.set("rowOffset", String(processed + 2));
+        // Shopify Embedded App: 各チャンクごとに fresh session token を取得
+        const _sessionToken2 = await (window as any).shopify?.idToken?.();
         const chunkRes = await fetch(window.location.pathname + window.location.search, {
-          method: "POST", body: chunkFd, signal: abort.signal, credentials: "include",
+          method: "POST",
+          body: chunkFd,
+          signal: abort.signal,
+          credentials: "include",
+          headers: _sessionToken2 ? { Authorization: `Bearer ${_sessionToken2}` } : {},
         });
         if (!chunkRes.ok) {
           const bodyText = await chunkRes.text().catch(() => "");
