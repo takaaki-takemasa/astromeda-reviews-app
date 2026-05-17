@@ -364,8 +364,64 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         return { ok: false, error: `resolve batch failed: ${e?.message ?? String(e)}`, intent };
       }
     }
+
+    // ─── 既存 astromeda_review を全件取得して自然キー → GID マップを構築 ───
+    // (CSV 再投入時の重複防止)
+    const existingKeyToGid: Record<string, string> = {};
+    let cursor: string | null = null;
+    let existingFetchPages = 0;
+    try {
+      while (true) {
+        const listRes: any = await admin.graphql(`#graphql
+          query ListExistingReviews($cursor: String) {
+            metaobjects(type: "astromeda_review", first: 250, after: $cursor) {
+              edges {
+                cursor
+                node {
+                  id
+                  fields { key value }
+                }
+              }
+              pageInfo { hasNextPage }
+            }
+          }
+        `, { variables: { cursor } });
+        const listJson: any = await listRes.json();
+        const edges = listJson.data?.metaobjects?.edges ?? [];
+        for (const edge of edges) {
+          const fields: Record<string, string> = {};
+          for (const f of (edge.node.fields || [])) fields[f.key] = f.value;
+          const productRef = fields.product_ref || "";
+          const reviewerEmail = fields.reviewer_email || "";
+          const body = fields.body || "";
+          const naturalKey = `${productRef}::${reviewerEmail}::${body.slice(0, 80)}`;
+          existingKeyToGid[naturalKey] = edge.node.id;
+          cursor = edge.cursor;
+        }
+        existingFetchPages++;
+        const hasNext = listJson.data?.metaobjects?.pageInfo?.hasNextPage;
+        if (!hasNext) break;
+        if (existingFetchPages > 50) break; // safety cap
+      }
+    } catch (e: any) {
+      // 既存取得失敗は警告のみ。fall back: 重複作成は許容
+      console.warn("[import_csv_resolve] existing fetch failed:", e?.message);
+    }
+
     const elapsed = Date.now() - resolveStart;
-    return { ok: true, intent, handleToGid, unresolved, _debug: { elapsedMs: elapsed, batchCount: Math.ceil(cleanHandles.length / 50) } };
+    return {
+      ok: true,
+      intent,
+      handleToGid,
+      unresolved,
+      existingKeyToGid,
+      _debug: {
+        elapsedMs: elapsed,
+        batchCount: Math.ceil(cleanHandles.length / 50),
+        existingFetchPages,
+        existingCount: Object.keys(existingKeyToGid).length,
+      },
+    };
   }
 
   // ─── intent: import_csv_chunk (process a small chunk of rows; client-side chunking) ───
@@ -373,11 +429,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     let headers: string[] = [];
     let rows: string[][] = [];
     let handleToGid: Record<string, string> = {};
+    let existingKeyToGid: Record<string, string> = {};
     let rowOffset = 2;
     try {
       headers = JSON.parse(String(formData.get("headers") || "[]"));
       rows = JSON.parse(String(formData.get("rows") || "[]"));
       handleToGid = JSON.parse(String(formData.get("handleToGid") || "{}"));
+      existingKeyToGid = JSON.parse(String(formData.get("existingKeyToGid") || "{}"));
       rowOffset = parseInt(String(formData.get("rowOffset") || "2"), 10) || 2;
     } catch (e: any) {
       return { ok: false, error: `chunk payload parse error: ${e?.message ?? String(e)}`, intent };
@@ -441,8 +499,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           ...(posted_at ? [{ key: "posted_at", value: posted_at }] : []),
         ];
 
-        if (id && id.startsWith("gid://shopify/Metaobject/")) {
-          const upRes = await admin.graphql(EDIT_REVIEW_MUTATION, { variables: { id, fields } });
+        // 自然キーで既存レビュー検索 (id が空でも上書き判定)
+        const naturalKey = `${productGid}::${reviewer_email || `admin@${session.shop}`}::${(body || "").slice(0, 80)}`;
+        const matchedExistingId = !id && existingKeyToGid[naturalKey] ? existingKeyToGid[naturalKey] : "";
+        const effectiveId = (id && id.startsWith("gid://shopify/Metaobject/")) ? id : matchedExistingId;
+
+        if (effectiveId) {
+          const upRes = await admin.graphql(EDIT_REVIEW_MUTATION, { variables: { id: effectiveId, fields } });
           const upJson = (await upRes.json()) as { data?: { metaobjectUpdate?: { userErrors: Array<{ message: string }> } } };
           const errs = upJson.data?.metaobjectUpdate?.userErrors ?? [];
           if (errs.length) throw new Error(errs.map((e) => e.message).join(", "));
@@ -1180,6 +1243,7 @@ export default function ReviewsTab() {
       if (!resolveJson?.ok) throw new Error(resolveJson?.error || "商品 ID 解決失敗");
       const handleToGid: Record<string, string> = resolveJson.handleToGid || {};
       const unresolved: string[] = resolveJson.unresolved || [];
+      const existingKeyToGid: Record<string, string> = resolveJson.existingKeyToGid || {};
       if (unresolved.length > 0 && Object.keys(handleToGid).length === 0) {
         throw new Error(`いずれの商品も解決できませんでした: ${unresolved.slice(0, 5).join(", ")}`);
       }
@@ -1210,6 +1274,7 @@ export default function ReviewsTab() {
         chunkFd.set("headers", JSON.stringify(headers));
         chunkFd.set("rows", JSON.stringify(chunks[c]));
         chunkFd.set("handleToGid", JSON.stringify(handleToGid));
+        chunkFd.set("existingKeyToGid", JSON.stringify(existingKeyToGid));
         chunkFd.set("rowOffset", String(processed + 2));
         const chunkJson = await submitAndAwait(chunkFd);
         if (!chunkJson?.ok) throw new Error(chunkJson?.error || `チャンク ${c + 1}/${chunks.length} 失敗`);
