@@ -1035,6 +1035,11 @@ function ReviewStorefrontPreview({ review, productImage, productTitle }: { revie
 export default function ReviewsTab() {
   const { tab, reviews, pageInfo, shop } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<ActionResult>();
+  const importFetcher = useFetcher<any>();
+  // fetcher.submit の Promise wrap (CSV import で使う)
+  // useFetcher の state を監視して完了を待つ
+  const importFetcherRef = useRef(importFetcher);
+  useEffect(() => { importFetcherRef.current = importFetcher; }, [importFetcher]);
   const detailFetcher = useFetcher<ActionResult>();
   const [, setSearchParams] = useSearchParams();
 
@@ -1140,31 +1145,38 @@ export default function ReviewsTab() {
       const dataRows = all.slice(1).filter((r) => r.some((c) => c && String(c).trim()));
       if (dataRows.length === 0) throw new Error("データ行がありません");
 
+      // Promise-wrapped fetcher.submit (auth が自動で通る正規パス)
+      const submitAndAwait = (formData: FormData): Promise<any> => new Promise((resolve, reject) => {
+        const checkInterval = 50;
+        const maxWait = 90000; // 90s max per call
+        const startTime = Date.now();
+        let lastState = importFetcherRef.current.state;
+        let stateSeenLoading = lastState !== "idle";
+        importFetcherRef.current.submit(formData, { method: "post" });
+        // initial state may still be idle; poll for transition
+        const tick = () => {
+          if (abort.signal.aborted) return reject(new Error("AbortError"));
+          const f = importFetcherRef.current;
+          if (Date.now() - startTime > maxWait) return reject(new Error("submitAndAwait timeout"));
+          if (f.state !== "idle") stateSeenLoading = true;
+          if (stateSeenLoading && f.state === "idle") {
+            if (f.data !== undefined) resolve(f.data);
+            else resolve({ ok: false, error: "(no data)" });
+            return;
+          }
+          setTimeout(tick, checkInterval);
+        };
+        setTimeout(tick, checkInterval);
+      });
+
       // ─── resolve unique handles → GIDs ───
       const uniqueHandles = Array.from(new Set(dataRows.map((r) => String(r[idxHandle] || "").trim()).filter(Boolean)));
       setImportProgress((p) => ({ ...(p!), message: `商品 ID を解決中... (${uniqueHandles.length} 件)` }));
       const resolveFd = new FormData();
       resolveFd.set("intent", "import_csv_resolve");
       resolveFd.set("handles", JSON.stringify(uniqueHandles));
-      // Shopify Embedded App: App Bridge から session token を取得して Bearer 付与
-      const _sessionToken1 = await (shopify as any)?.idToken?.();
-      const resolveRes = await fetch(window.location.pathname + window.location.search, {
-        method: "POST",
-        body: resolveFd,
-        signal: abort.signal,
-        credentials: "include",
-        headers: _sessionToken1 ? { Authorization: `Bearer ${_sessionToken1}` } : {},
-      });
-      if (!resolveRes.ok) {
-        const bodyText = await resolveRes.text().catch(() => "");
-        throw new Error(`商品 ID 解決失敗 (HTTP ${resolveRes.status}): ${bodyText.slice(0, 500)}`);
-      }
-      const _contentType = resolveRes.headers.get("content-type") || "";
-      if (!_contentType.includes("json")) {
-        const bodyText = await resolveRes.text().catch(() => "");
-        throw new Error(`商品 ID 解決失敗: 期待した JSON ではなく ${_contentType} を受信。body 先頭: ${bodyText.slice(0, 200)}`);
-      }
-      const resolveJson = await resolveRes.json();
+      // fetcher.submit を使う (Remix が auth を自動で付ける)
+      const resolveJson = await submitAndAwait(resolveFd);
       if (!resolveJson?.ok) throw new Error(resolveJson?.error || "商品 ID 解決失敗");
       const handleToGid: Record<string, string> = resolveJson.handleToGid || {};
       const unresolved: string[] = resolveJson.unresolved || [];
@@ -1199,25 +1211,7 @@ export default function ReviewsTab() {
         chunkFd.set("rows", JSON.stringify(chunks[c]));
         chunkFd.set("handleToGid", JSON.stringify(handleToGid));
         chunkFd.set("rowOffset", String(processed + 2));
-        // Shopify Embedded App: 各チャンクごとに fresh session token を取得
-        const _sessionToken2 = await (shopify as any)?.idToken?.();
-        const chunkRes = await fetch(window.location.pathname + window.location.search, {
-          method: "POST",
-          body: chunkFd,
-          signal: abort.signal,
-          credentials: "include",
-          headers: _sessionToken2 ? { Authorization: `Bearer ${_sessionToken2}` } : {},
-        });
-        if (!chunkRes.ok) {
-          const bodyText = await chunkRes.text().catch(() => "");
-          throw new Error(`チャンク ${c + 1}/${chunks.length} 失敗 (HTTP ${chunkRes.status}): ${bodyText.slice(0, 300)}`);
-        }
-        const _ct = chunkRes.headers.get("content-type") || "";
-        if (!_ct.includes("json")) {
-          const bodyText = await chunkRes.text().catch(() => "");
-          throw new Error(`チャンク ${c + 1}/${chunks.length} 失敗: JSON ではなく ${_ct}。body: ${bodyText.slice(0, 200)}`);
-        }
-        const chunkJson = await chunkRes.json();
+        const chunkJson = await submitAndAwait(chunkFd);
         if (!chunkJson?.ok) throw new Error(chunkJson?.error || `チャンク ${c + 1}/${chunks.length} 失敗`);
         aggCreated += chunkJson.csvImport?.created || 0;
         aggUpdated += chunkJson.csvImport?.updated || 0;
