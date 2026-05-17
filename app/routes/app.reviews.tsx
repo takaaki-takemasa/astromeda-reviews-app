@@ -108,8 +108,8 @@ interface ActionResult {
 }
 
 const LIST_QUERY = `#graphql
-  query ListReviews($status: String!, $first: Int!, $after: String) {
-    metaobjects(type: "astromeda_review", first: $first, after: $after, query: $status) {
+  query ListReviews($first: Int!, $after: String) {
+    metaobjects(type: "astromeda_review", first: $first, after: $after) {
       edges {
         node {
           id
@@ -294,89 +294,62 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
   const url = new URL(request.url);
   const tab = (url.searchParams.get("tab") as ReviewStatus | null) ?? "pending";
-  const cursor = url.searchParams.get("cursor");
-  // cursor 履歴: 戻るボタン用 (カンマ区切り)
-  const cursorsParam = url.searchParams.get("cursors") || "";
-  const cursorHistory = cursorsParam ? cursorsParam.split(",").filter(Boolean) : [];
+  const pageParam = parseInt(url.searchParams.get("page") || "1", 10);
+  const currentPage = isNaN(pageParam) || pageParam < 1 ? 1 : pageParam;
 
-  const statusFilter = `fields.status:"${tab}"`;
   const PAGE_SIZE = 100;
 
-  // 並列で 一覧 + 総件数 を取得
-  const [listResponse, countResponse] = await Promise.all([
-    admin.graphql(LIST_QUERY, {
-      variables: { status: statusFilter, first: PAGE_SIZE, after: cursor ?? null },
-    }),
-    admin.graphql(`#graphql
-      query CountReviews($status: String!) {
-        metaobjects(type: "astromeda_review", first: 250, query: $status) {
-          edges { node { id } }
-          pageInfo { hasNextPage endCursor }
-        }
-      }
-    `, { variables: { status: statusFilter } }),
-  ]);
-
-  const data = (await listResponse.json()) as {
-    data?: {
-      metaobjects?: {
-        edges: Array<Parameters<typeof extractReview>[0]>;
-        pageInfo: { hasNextPage: boolean; endCursor: string | null };
-      };
-    };
-  };
-
-  // 総件数を頑張って数える (250 で足りなければ複数回 fetch)
-  let totalCount = 0;
-  let countCursor: string | null = null;
-  try {
-    const firstCount = (await countResponse.json()) as any;
-    totalCount += firstCount.data?.metaobjects?.edges?.length ?? 0;
-    countCursor = firstCount.data?.metaobjects?.pageInfo?.endCursor ?? null;
-    let hasMore = firstCount.data?.metaobjects?.pageInfo?.hasNextPage ?? false;
-    let safety = 0;
-    while (hasMore && safety < 50) {
-      const more: any = await admin.graphql(`#graphql
-        query CountReviewsMore($status: String!, $cursor: String) {
-          metaobjects(type: "astromeda_review", first: 250, query: $status, after: $cursor) {
-            edges { node { id } }
-            pageInfo { hasNextPage endCursor }
-          }
-        }
-      `, { variables: { status: statusFilter, cursor: countCursor } });
-      const moreJson = await more.json();
-      totalCount += moreJson.data?.metaobjects?.edges?.length ?? 0;
-      countCursor = moreJson.data?.metaobjects?.pageInfo?.endCursor ?? null;
-      hasMore = moreJson.data?.metaobjects?.pageInfo?.hasNextPage ?? false;
-      safety++;
+  // ─── 全件取得 → JS側でステータス別にフィルタ ───
+  // (Shopify metaobjects の query filter が効かないため client-side filter)
+  const allReviews: ReviewItem[] = [];
+  let cursor: string | null = null;
+  let safety = 0;
+  while (safety < 50) {
+    const res: any = await admin.graphql(LIST_QUERY, {
+      variables: { first: 250, after: cursor },
+    });
+    const json = await res.json();
+    const edges = json.data?.metaobjects?.edges ?? [];
+    for (const edge of edges) {
+      allReviews.push(extractReview(edge));
     }
-  } catch {
-    // 件数取得失敗は致命的でないので無視
+    const pageInfo = json.data?.metaobjects?.pageInfo;
+    if (!pageInfo?.hasNextPage) break;
+    cursor = pageInfo.endCursor;
+    safety++;
   }
 
-  const edges = data.data?.metaobjects?.edges ?? [];
-  const reviews: ReviewItem[] = edges.map(extractReview);
+  // タブごとに count を計算
+  const tabCounts = {
+    pending: allReviews.filter((r) => r.status === "pending").length,
+    approved: allReviews.filter((r) => r.status === "approved").length,
+    rejected: allReviews.filter((r) => r.status === "rejected").length,
+  };
+
+  // 現在の tab で filter
+  const filteredReviews = allReviews.filter((r) => r.status === tab);
+  const totalCount = filteredReviews.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const startIdx = (currentPage - 1) * PAGE_SIZE;
+  const reviews = filteredReviews.slice(startIdx, startIdx + PAGE_SIZE);
 
   // Extract shop slug (strip .myshopify.com) for admin URLs
   const shopFull = (session.shop ?? "").toString();
   const shop = shopFull.replace(/\.myshopify\.com$/, "");
 
-  // 現在のページ番号 (cursor history の長さ + 1)
-  const currentPage = cursorHistory.length + 1;
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
-
   return {
     tab,
     reviews,
-    pageInfo: data.data?.metaobjects?.pageInfo ?? { hasNextPage: false, endCursor: null },
+    pageInfo: { hasNextPage: currentPage < totalPages, endCursor: null as string | null },
     shop,
     pagination: {
       pageSize: PAGE_SIZE,
       currentPage,
       totalPages,
       totalCount,
-      cursorHistory,
+      cursorHistory: [] as string[],
     },
+    tabCounts,
   };
 };
 
@@ -1206,7 +1179,7 @@ function ReviewStorefrontPreview({ review, productImage, productTitle }: { revie
 // Main component
 // ─────────────────────────────────────────────
 export default function ReviewsTab() {
-  const { tab, reviews, pageInfo, shop, pagination } = useLoaderData<typeof loader>();
+  const { tab, reviews, pageInfo, shop, pagination, tabCounts } = useLoaderData<typeof loader>();
 
   // pagination bar inline JSX (上段+下段で使い回し)
   // この変数は ReviewsTab 内で定義する必要がある (pagination が scope に入っているため)
@@ -1242,13 +1215,11 @@ export default function ReviewsTab() {
             <Button
               disabled={!(pagination.currentPage > 1)}
               onClick={() => {
-                const history = [...pagination.cursorHistory];
-                history.pop();
-                if (history.length === 0) {
+                const prev = pagination.currentPage - 1;
+                if (prev <= 1) {
                   setSearchParams({ tab });
                 } else {
-                  const prevCursor = history[history.length - 1];
-                  setSearchParams({ tab, cursor: prevCursor, cursors: history.join(",") });
+                  setSearchParams({ tab, page: String(prev) });
                 }
               }}
             >
@@ -1256,10 +1227,10 @@ export default function ReviewsTab() {
             </Button>
             <Button
               variant="primary"
-              disabled={!pageInfo.hasNextPage}
+              disabled={!(pagination.currentPage < pagination.totalPages)}
               onClick={() => {
-                const newHistory = pagination.cursorHistory.concat([pageInfo.endCursor ?? ""]).filter(Boolean);
-                setSearchParams({ tab, cursor: pageInfo.endCursor ?? "", cursors: newHistory.join(",") });
+                const next = pagination.currentPage + 1;
+                setSearchParams({ tab, page: String(next) });
               }}
             >
               次のページ →
@@ -1697,9 +1668,9 @@ export default function ReviewsTab() {
   const detailLoading = detailFetcher.state === "submitting" || detailFetcher.state === "loading";
 
   const tabs = [
-    { id: "pending", content: "承認待ち" },
-    { id: "approved", content: "公開中" },
-    { id: "rejected", content: "拒否" },
+    { id: "pending", content: `承認待ち${tabCounts ? ` (${tabCounts.pending})` : ""}` },
+    { id: "approved", content: `公開中${tabCounts ? ` (${tabCounts.approved})` : ""}` },
+    { id: "rejected", content: `拒否${tabCounts ? ` (${tabCounts.rejected})` : ""}` },
   ];
 
   const sourceBadge = (st: string) => {
