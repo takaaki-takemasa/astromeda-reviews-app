@@ -385,9 +385,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     const results = { created: 0, updated: 0, errors: [] as Array<{ row: number; error: string }> };
 
-    for (let r = 0; r < rows.length; r++) {
+    // 修正(2026-05-17): 直列 → 並列化 (バッチ 5)。Vercel timeout 回避。
+    const CONCURRENCY = 5;
+    const processRow = async (r: number): Promise<void> => {
       const row = rows[r];
-      if (!Array.isArray(row) || row.every((c) => !c || !String(c).trim())) continue;
+      if (!Array.isArray(row) || row.every((c) => !c || !String(c).trim())) return;
       try {
         const get = (k: string) => (idxOf(k) >= 0 ? String(row[idxOf(k)] ?? "").trim() : "");
         const id = get("id");
@@ -454,6 +456,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       } catch (e: any) {
         results.errors.push({ row: rowOffset + r, error: e?.message ?? String(e) });
       }
+    };
+
+    // バッチ CONCURRENCY 並列で処理
+    for (let i = 0; i < rows.length; i += CONCURRENCY) {
+      const batch: number[] = [];
+      for (let j = i; j < Math.min(i + CONCURRENCY, rows.length); j++) batch.push(j);
+      await Promise.all(batch.map((r) => processRow(r)));
     }
 
     return { ok: true, intent, csvImport: results };
@@ -1144,8 +1153,8 @@ export default function ReviewsTab() {
         throw new Error(`いずれの商品も解決できませんでした: ${unresolved.slice(0, 5).join(", ")}`);
       }
 
-      // ─── chunk rows (30 per chunk) ───
-      const CHUNK = 30;
+      // ─── chunk rows (10 per chunk; サーバ並列化と組み合わせて Vercel timeout 回避) ───
+      const CHUNK = 10;
       const chunks: string[][][] = [];
       for (let i = 0; i < dataRows.length; i += CHUNK) chunks.push(dataRows.slice(i, i + CHUNK));
 
