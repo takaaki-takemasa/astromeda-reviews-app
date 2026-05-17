@@ -286,13 +286,29 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const tab = (url.searchParams.get("tab") as ReviewStatus | null) ?? "pending";
   const cursor = url.searchParams.get("cursor");
+  // cursor 履歴: 戻るボタン用 (カンマ区切り)
+  const cursorsParam = url.searchParams.get("cursors") || "";
+  const cursorHistory = cursorsParam ? cursorsParam.split(",").filter(Boolean) : [];
 
   const statusFilter = `fields.status:"${tab}"`;
+  const PAGE_SIZE = 100;
 
-  const response = await admin.graphql(LIST_QUERY, {
-    variables: { status: statusFilter, first: 20, after: cursor ?? null },
-  });
-  const data = (await response.json()) as {
+  // 並列で 一覧 + 総件数 を取得
+  const [listResponse, countResponse] = await Promise.all([
+    admin.graphql(LIST_QUERY, {
+      variables: { status: statusFilter, first: PAGE_SIZE, after: cursor ?? null },
+    }),
+    admin.graphql(`#graphql
+      query CountReviews($status: String!) {
+        metaobjects(type: "astromeda_review", first: 250, query: $status) {
+          edges { node { id } }
+          pageInfo { hasNextPage endCursor }
+        }
+      }
+    `, { variables: { status: statusFilter } }),
+  ]);
+
+  const data = (await listResponse.json()) as {
     data?: {
       metaobjects?: {
         edges: Array<Parameters<typeof extractReview>[0]>;
@@ -301,6 +317,34 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     };
   };
 
+  // 総件数を頑張って数える (250 で足りなければ複数回 fetch)
+  let totalCount = 0;
+  let countCursor: string | null = null;
+  try {
+    const firstCount = (await countResponse.json()) as any;
+    totalCount += firstCount.data?.metaobjects?.edges?.length ?? 0;
+    countCursor = firstCount.data?.metaobjects?.pageInfo?.endCursor ?? null;
+    let hasMore = firstCount.data?.metaobjects?.pageInfo?.hasNextPage ?? false;
+    let safety = 0;
+    while (hasMore && safety < 50) {
+      const more: any = await admin.graphql(`#graphql
+        query CountReviewsMore($status: String!, $cursor: String) {
+          metaobjects(type: "astromeda_review", first: 250, query: $status, after: $cursor) {
+            edges { node { id } }
+            pageInfo { hasNextPage endCursor }
+          }
+        }
+      `, { variables: { status: statusFilter, cursor: countCursor } });
+      const moreJson = await more.json();
+      totalCount += moreJson.data?.metaobjects?.edges?.length ?? 0;
+      countCursor = moreJson.data?.metaobjects?.pageInfo?.endCursor ?? null;
+      hasMore = moreJson.data?.metaobjects?.pageInfo?.hasNextPage ?? false;
+      safety++;
+    }
+  } catch {
+    // 件数取得失敗は致命的でないので無視
+  }
+
   const edges = data.data?.metaobjects?.edges ?? [];
   const reviews: ReviewItem[] = edges.map(extractReview);
 
@@ -308,11 +352,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const shopFull = (session.shop ?? "").toString();
   const shop = shopFull.replace(/\.myshopify\.com$/, "");
 
+  // 現在のページ番号 (cursor history の長さ + 1)
+  const currentPage = cursorHistory.length + 1;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+
   return {
     tab,
     reviews,
     pageInfo: data.data?.metaobjects?.pageInfo ?? { hasNextPage: false, endCursor: null },
     shop,
+    pagination: {
+      pageSize: PAGE_SIZE,
+      currentPage,
+      totalPages,
+      totalCount,
+      cursorHistory,
+    },
   };
 };
 
@@ -1100,7 +1155,7 @@ function ReviewStorefrontPreview({ review, productImage, productTitle }: { revie
 // Main component
 // ─────────────────────────────────────────────
 export default function ReviewsTab() {
-  const { tab, reviews, pageInfo, shop } = useLoaderData<typeof loader>();
+  const { tab, reviews, pageInfo, shop, pagination } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<ActionResult>();
   const importFetcher = useFetcher<any>();
   // fetcher.submit の Promise wrap (CSV import で使う)
@@ -1704,14 +1759,42 @@ export default function ReviewsTab() {
             </BlockStack>
           </Card>
 
-          {pageInfo.hasNextPage ? (
-            <InlineStack align="end">
-              <Pagination
-                hasNext={pageInfo.hasNextPage}
-                onNext={() => setSearchParams({ tab, cursor: pageInfo.endCursor ?? "" })}
-                hasPrevious={false}
-                onPrevious={() => {}}
-              />
+          {pagination.totalCount > 0 ? (
+            <InlineStack align="space-between" blockAlign="center">
+              <div style={{ fontSize: 13, color: "#6b7280" }}>
+                全 <strong style={{ color: "#111827", fontSize: 14 }}>{pagination.totalCount}</strong> 件中{" "}
+                <strong style={{ color: "#111827", fontSize: 14 }}>
+                  {(pagination.currentPage - 1) * pagination.pageSize + 1}
+                  {" - "}
+                  {Math.min(pagination.currentPage * pagination.pageSize, pagination.totalCount)}
+                </strong>
+                {" 件を表示中"}
+                {pagination.totalPages > 1 ? (
+                  <span style={{ marginLeft: 12, padding: "2px 8px", background: "#f3f4f6", borderRadius: 4 }}>
+                    ページ {pagination.currentPage} / {pagination.totalPages}
+                  </span>
+                ) : null}
+              </div>
+              {(pagination.totalPages > 1) ? (
+                <Pagination
+                  hasNext={pageInfo.hasNextPage}
+                  onNext={() => {
+                    const newHistory = pagination.cursorHistory.concat([pageInfo.endCursor ?? ""]).filter(Boolean);
+                    setSearchParams({ tab, cursor: pageInfo.endCursor ?? "", cursors: newHistory.join(",") });
+                  }}
+                  hasPrevious={pagination.currentPage > 1}
+                  onPrevious={() => {
+                    const history = [...pagination.cursorHistory];
+                    history.pop();
+                    if (history.length === 0) {
+                      setSearchParams({ tab });
+                    } else {
+                      const prevCursor = history[history.length - 1];
+                      setSearchParams({ tab, cursor: prevCursor, cursors: history.join(",") });
+                    }
+                  }}
+                />
+              ) : null}
             </InlineStack>
           ) : null}
         </Layout.Section>
