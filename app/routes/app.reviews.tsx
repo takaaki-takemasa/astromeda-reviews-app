@@ -1718,33 +1718,34 @@ export default function ReviewsTab() {
           {r.product?.image_url ? (
             <Thumbnail source={r.product.image_url} alt={r.product.title} size="small" />
           ) : (
-            <div style={{ width: 40, height: 40, background: "#f3f4f6", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#9ca3af" }}>NO IMG</div>
+            <div style={{ width: 36, height: 36, background: "#f3f4f6", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: "#9ca3af" }}>NO IMG</div>
           )}
-          <Text as="span" variant="bodySm" truncate>
+          <span style={{
+            display: "block",
+            maxWidth: 220,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            fontSize: 13,
+          }}>
             {r.product?.title || "(商品削除)"}
-          </Text>
+          </span>
         </InlineStack>
       </IndexTable.Cell>
       <IndexTable.Cell>
-        <BlockStack gap="050">
-          <Text as="span" variant="bodyMd" fontWeight="semibold" truncate>
-            {r.title || ""}
-          </Text>
-          <Text as="span" variant="bodySm" tone="subdued" truncate>
-            {r.body.slice(0, 80)}
-            {r.body.length > 80 ? "…" : ""}
-          </Text>
-        </BlockStack>
+        <Text as="span" variant="bodySm" tone="subdued" truncate>
+          {r.body.slice(0, 50)}
+          {r.body.length > 50 ? "…" : ""}
+        </Text>
       </IndexTable.Cell>
       <IndexTable.Cell>
         <BlockStack gap="050">
-          <Text as="span" variant="bodyMd">{r.reviewer_name || "—"}</Text>
-          {r.reviewer_email ? (
-            <Text as="span" variant="bodySm" tone="subdued" truncate>{r.reviewer_email}</Text>
-          ) : null}
+          <Text as="span" variant="bodySm" fontWeight="semibold">{r.reviewer_name || "—"}</Text>
+          <Text as="span" variant="bodySm" tone="subdued">
+            {new Date(r.created_at).toLocaleDateString("ja-JP", { year: "2-digit", month: "numeric", day: "numeric" })}
+          </Text>
         </BlockStack>
       </IndexTable.Cell>
-      <IndexTable.Cell>{sourceBadge(r.source_type)}</IndexTable.Cell>
       <IndexTable.Cell>
         <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 90 }}>
           {statusBadge(r.status)}
@@ -1793,11 +1794,6 @@ export default function ReviewsTab() {
             ) : null}
           </div>
         </div>
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        <Text as="span" variant="bodySm">
-          {new Date(r.created_at).toLocaleDateString("ja-JP")}
-        </Text>
       </IndexTable.Cell>
     </IndexTable.Row>
   ));
@@ -1905,11 +1901,9 @@ export default function ReviewsTab() {
                   headings={[
                     { title: "評価" },
                     { title: "商品" },
-                    { title: "レビュー (タイトル/本文抜粋)" },
-                    { title: "投稿者" },
-                    { title: "経路" },
+                    { title: "レビュー" },
+                    { title: "投稿者 / 投稿日" },
                     { title: "状態" },
-                    { title: "投稿日" },
                   ]}
                   selectable={tab === "pending"}
                 >
