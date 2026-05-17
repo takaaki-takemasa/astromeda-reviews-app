@@ -1,3 +1,24 @@
+// 自動翻訳ヘルパー (DeepL)
+function isProbablyJapanese(text: string): boolean {
+  return /[\u3040-\u309F\u30A0-\u30FF]/.test(text);
+}
+async function translateToJapanese(text: string): Promise<string | null> {
+  if (!text || isProbablyJapanese(text)) return null;
+  const apiKey = process.env.DEEPL_API_KEY;
+  if (!apiKey) return null;
+  try {
+    const endpoint = apiKey.endsWith(":fx") ? "https://api-free.deepl.com/v2/translate" : "https://api.deepl.com/v2/translate";
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { Authorization: `DeepL-Auth-Key ${apiKey}`, "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ text, target_lang: "JA" }).toString(),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { translations?: Array<{ text?: string }> };
+    return json.translations?.[0]?.text || null;
+  } catch { return null; }
+}
+
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
 import { useLoaderData, useActionData, useNavigation } from "@remix-run/react";
 import { authenticate } from "../shopify.server";
@@ -177,7 +198,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     { key: "product_ref", value: productRefGid },
     { key: "rating", value: String(rating) },
     { key: "title", value: title },
-    { key: "body", value: body },
+    { key: "body", value: await (async () => {
+      if (isProbablyJapanese(body)) return body;
+      const tr = await translateToJapanese(body);
+      return tr ? body + "\n\n──── 日本語訳 ────\n\n" + tr : body;
+    })() },
     { key: "reviewer_name", value: reviewer_name || v.token.customer_name || "匿名" },
     { key: "reviewer_email", value: v.token.email },
     { key: "source_type", value: sourceType },

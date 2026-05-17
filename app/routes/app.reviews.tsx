@@ -353,6 +353,57 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   };
 };
 
+
+// ─────────────────────────────────────────────
+// 自動翻訳ヘルパー (DeepL API)
+// DEEPL_API_KEY が未設定なら null を返してフォールバック (原文のみ保存)
+// ─────────────────────────────────────────────
+function isProbablyJapanese(text: string): boolean {
+  // ひらがな/カタカナを含めば日本語と判定
+  return /[\u3040-\u309F\u30A0-\u30FF]/.test(text);
+}
+
+async function translateToJapanese(text: string): Promise<string | null> {
+  if (!text || !text.trim()) return null;
+  if (isProbablyJapanese(text)) return null; // 既に日本語
+  const apiKey = process.env.DEEPL_API_KEY;
+  if (!apiKey) return null;
+  try {
+    // DeepL Free API
+    const endpoint = apiKey.endsWith(":fx")
+      ? "https://api-free.deepl.com/v2/translate"
+      : "https://api.deepl.com/v2/translate";
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `DeepL-Auth-Key ${apiKey}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        text,
+        target_lang: "JA",
+      }).toString(),
+    });
+    if (!res.ok) {
+      console.warn("[translate] DeepL failed", res.status, await res.text().catch(() => ""));
+      return null;
+    }
+    const json = (await res.json()) as { translations?: Array<{ text?: string }> };
+    return json.translations?.[0]?.text || null;
+  } catch (e: any) {
+    console.warn("[translate] error", e?.message);
+    return null;
+  }
+}
+
+const TRANSLATION_MARKER_SERVER = "──── 日本語訳 ────";
+function appendTranslation(original: string, translation: string | null): string {
+  if (!translation) return original;
+  // すでに翻訳併記済みなら何もしない
+  if (original.includes(TRANSLATION_MARKER_SERVER)) return original;
+  return original + "\n\n" + TRANSLATION_MARKER_SERVER + "\n\n" + translation;
+}
+
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
   const formData = await request.formData();
@@ -679,11 +730,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           posted_at = isFinite(d.getTime()) ? d.toISOString() : "";
         }
 
+        // 非日本語 body は DeepL で翻訳して併記
+        let bodyForStore = body;
+        if (!body.includes(TRANSLATION_MARKER_SERVER) && !isProbablyJapanese(body)) {
+          const jaTrans = await translateToJapanese(body);
+          if (jaTrans) bodyForStore = appendTranslation(body, jaTrans);
+        }
+
         const fields: Array<{ key: string; value: string }> = [
           { key: "product_ref", value: productGid },
           { key: "rating", value: String(rating) },
-          { key: "title", value: ((titleRaw || (body || "").split("──── 日本語訳 ────")[0]) || "").replace(/[\r\n]+/g, " ").trim().slice(0, 100) || "(タイトルなし)" },
-          { key: "body", value: body },
+          { key: "title", value: ((titleRaw || (bodyForStore || "").split("──── 日本語訳 ────")[0]) || "").replace(/[\r\n]+/g, " ").trim().slice(0, 100) || "(タイトルなし)" },
+          { key: "body", value: bodyForStore },
           { key: "reviewer_name", value: reviewer_name },
           { key: "reviewer_email", value: reviewer_email || `admin@${session.shop}` },
           { key: "source_type", value: source_type },
