@@ -322,22 +322,39 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const intent = formData.get("intent") as string;
 
   // ─── intent: import_csv_resolve (client pre-step: resolve unique product handles to GIDs) ───
+  // 修正(2026-05-17): handle ごとの serial GraphQL 呼び出しを aliased query で一括化。
+  // 30 件の handle で 30 回 API 呼び出し→ Vercel 10s timeout になっていた問題を解消。
   if (intent === "import_csv_resolve") {
     let handles: string[] = [];
     try { handles = JSON.parse(String(formData.get("handles") || "[]")); } catch { handles = []; }
     if (!Array.isArray(handles)) return { ok: false, error: "handles が不正です", intent };
+
+    const cleanHandles = handles.filter((h) => h && typeof h === "string");
     const handleToGid: Record<string, string> = {};
     const unresolved: string[] = [];
-    for (const h of handles) {
-      if (!h || typeof h !== "string") continue;
-      const phRes = await admin.graphql(`#graphql
-        query ProductByHandle($handle: String!) {
-          productByHandle(handle: $handle) { id }
+
+    // バッチサイズ 50 で aliased query を組む (1 クエリで 50 handle まで)
+    const BATCH_SIZE = 50;
+    for (let i = 0; i < cleanHandles.length; i += BATCH_SIZE) {
+      const batch = cleanHandles.slice(i, i + BATCH_SIZE);
+      const aliasedFields = batch
+        .map((_h, idx) => `h${idx}: productByHandle(handle: $h${idx}) { id handle }`)
+        .join("\n          ");
+      const variableDefs = batch.map((_h, idx) => `$h${idx}: String!`).join(", ");
+      const queryStr = `#graphql
+        query ResolveHandles(${variableDefs}) {
+          ${aliasedFields}
         }
-      `, { variables: { handle: h } });
-      const phJson = (await phRes.json()) as { data?: { productByHandle?: { id?: string } } };
-      const gid = phJson.data?.productByHandle?.id;
-      if (gid) handleToGid[h] = gid; else unresolved.push(h);
+      `;
+      const variables: Record<string, string> = {};
+      batch.forEach((h, idx) => { variables[`h${idx}`] = h; });
+      const res = await admin.graphql(queryStr, { variables });
+      const json = (await res.json()) as { data?: Record<string, { id?: string; handle?: string } | null> };
+      batch.forEach((h, idx) => {
+        const node = json.data?.[`h${idx}`];
+        if (node?.id) handleToGid[h] = node.id;
+        else unresolved.push(h);
+      });
     }
     return { ok: true, intent, handleToGid, unresolved };
   }
