@@ -1764,11 +1764,22 @@ export default function ReviewsTab() {
         </div>
       </IndexTable.Cell>
       <IndexTable.Cell>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 4, paddingBottom: 4 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, paddingTop: 6, paddingBottom: 6 }}>
           {r.product?.image_url ? (
-            <Thumbnail source={r.product.image_url} alt={r.product.title} size="small" />
+            <img
+              src={r.product.image_url}
+              alt={r.product.title || ""}
+              style={{
+                width: 72,
+                height: 72,
+                objectFit: "cover",
+                borderRadius: 6,
+                border: "1px solid #e5e7eb",
+                flexShrink: 0,
+              }}
+            />
           ) : (
-            <div style={{ width: 36, height: 36, background: "#f3f4f6", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: "#9ca3af", flexShrink: 0 }}>NO IMG</div>
+            <div style={{ width: 72, height: 72, background: "#f3f4f6", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "#9ca3af", flexShrink: 0, border: "1px solid #e5e7eb" }}>NO IMG</div>
           )}
           <span style={{
             display: "block",
@@ -1788,12 +1799,14 @@ export default function ReviewsTab() {
         </div>
       </IndexTable.Cell>
       <IndexTable.Cell>
-        <BlockStack gap="050">
-          <Text as="span" variant="bodySm" fontWeight="semibold">{r.reviewer_name || "—"}</Text>
-          <Text as="span" variant="bodySm" tone="subdued">
+        <div style={{ display: "flex", flexDirection: "column", gap: 2, maxWidth: 90, fontSize: 11, lineHeight: 1.3 }}>
+          <span style={{ fontWeight: 600, color: "#374151", wordBreak: "break-word" }}>
+            {r.reviewer_name || "—"}
+          </span>
+          <span style={{ color: "#9ca3af", fontSize: 10 }}>
             {new Date(r.created_at).toLocaleDateString("ja-JP", { year: "2-digit", month: "numeric", day: "numeric" })}
-          </Text>
-        </BlockStack>
+          </span>
+        </div>
       </IndexTable.Cell>
       <IndexTable.Cell>{statusBadge(r.status)}</IndexTable.Cell>
     </IndexTable.Row>
