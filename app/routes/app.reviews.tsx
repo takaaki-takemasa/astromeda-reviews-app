@@ -1279,6 +1279,19 @@ export default function ReviewsTab() {
     fetcher.submit(fd, { method: "post" });
   };
 
+  // 行から直接ステータス変更
+  const changeStatusSingle = (id: string, newStatus: "approve" | "reject", e?: React.MouseEvent) => {
+    // 行クリック (詳細モーダル) を抑制
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    const fd = new FormData();
+    fd.set("intent", newStatus);
+    fd.set("ids", id);
+    fetcher.submit(fd, { method: "post" });
+  };
+
   // ─── Admin-create modal state ───
   const shopify = useAppBridge();
   const [createOpen, setCreateOpen] = useState(false);
@@ -1732,7 +1745,51 @@ export default function ReviewsTab() {
         </BlockStack>
       </IndexTable.Cell>
       <IndexTable.Cell>{sourceBadge(r.source_type)}</IndexTable.Cell>
-      <IndexTable.Cell>{statusBadge(r.status)}</IndexTable.Cell>
+      <IndexTable.Cell>
+        <BlockStack gap="100">
+          {statusBadge(r.status)}
+          <InlineStack gap="100" wrap={false}>
+            {r.status !== "approved" ? (
+              <button
+                type="button"
+                onClick={(e) => changeStatusSingle(r.id, "approve", e)}
+                style={{
+                  fontSize: 11,
+                  padding: "3px 8px",
+                  background: "#10b981",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 4,
+                  cursor: "pointer",
+                  fontWeight: 600,
+                }}
+                title="このレビューを承認して公開"
+              >
+                ✓ 承認
+              </button>
+            ) : null}
+            {r.status !== "rejected" ? (
+              <button
+                type="button"
+                onClick={(e) => changeStatusSingle(r.id, "reject", e)}
+                style={{
+                  fontSize: 11,
+                  padding: "3px 8px",
+                  background: "#fff",
+                  color: "#dc2626",
+                  border: "1px solid #fca5a5",
+                  borderRadius: 4,
+                  cursor: "pointer",
+                  fontWeight: 600,
+                }}
+                title="このレビューを非表示にする"
+              >
+                ✕ 非表示
+              </button>
+            ) : null}
+          </InlineStack>
+        </BlockStack>
+      </IndexTable.Cell>
       <IndexTable.Cell>
         <Text as="span" variant="bodySm">
           {new Date(r.created_at).toLocaleDateString("ja-JP")}
@@ -1744,7 +1801,7 @@ export default function ReviewsTab() {
   return (
     <Page
       title="レビュー一覧"
-      subtitle="行をクリックすると詳細とストアフロントプレビューを表示します"
+      subtitle="行クリックで詳細表示／状態列の ✓承認 / ✕非表示 ボタンで個別ステータス変更／チェックボックスで一括操作"
       primaryAction={{ content: "新規レビューを作成", onAction: openCreate }}
       secondaryActions={
         selectedResources.length > 0
