@@ -499,10 +499,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           ...(posted_at ? [{ key: "posted_at", value: posted_at }] : []),
         ];
 
-        // 自然キーで既存レビュー検索 (id が空でも上書き判定)
+        // 自然キーで既存レビュー検索 (id 列があれば優先、無効/空なら fallback)
         const naturalKey = `${productGid}::${reviewer_email || `admin@${session.shop}`}::${(body || "").slice(0, 80)}`;
-        const matchedExistingId = !id && existingKeyToGid[naturalKey] ? existingKeyToGid[naturalKey] : "";
-        const effectiveId = (id && id.startsWith("gid://shopify/Metaobject/")) ? id : matchedExistingId;
+        const idIsValid = id && id.startsWith("gid://shopify/Metaobject/");
+        const matchedByKey = existingKeyToGid[naturalKey] || "";
+        // 優先順位: 1) CSV の id 列 (Export → 編集 → 再 upload ワークフロー)
+        //          2) 自然キー一致 (id 列空の手書き CSV ワークフロー)
+        //          3) 新規作成
+        const effectiveId = idIsValid ? id : matchedByKey;
 
         if (effectiveId) {
           const upRes = await admin.graphql(EDIT_REVIEW_MUTATION, { variables: { id: effectiveId, fields } });
