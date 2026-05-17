@@ -1131,6 +1131,7 @@ export default function ReviewsTab() {
         return rows.filter((r) => r.length > 1 || (r.length === 1 && r[0].trim() !== ""));
       };
       const all = parseCsv(text);
+      console.log("[CSV-IMPORT-DEBUG-DEPLOY-V3] parseCsv done, rows:", all.length);
       if (all.length < 2) throw new Error("CSV にデータ行がありません (1行目はヘッダー)");
       const headers = all[0].map((h) => String(h).trim());
       const headersLow = headers.map((h) => h.toLowerCase());
@@ -1148,7 +1149,15 @@ export default function ReviewsTab() {
       const resolveRes = await fetch(window.location.pathname + window.location.search, {
         method: "POST", body: resolveFd, signal: abort.signal, credentials: "include",
       });
-      if (!resolveRes.ok) throw new Error(`商品 ID 解決失敗 (HTTP ${resolveRes.status})`);
+      if (!resolveRes.ok) {
+        const bodyText = await resolveRes.text().catch(() => "");
+        throw new Error(`商品 ID 解決失敗 (HTTP ${resolveRes.status}): ${bodyText.slice(0, 500)}`);
+      }
+      const _contentType = resolveRes.headers.get("content-type") || "";
+      if (!_contentType.includes("json")) {
+        const bodyText = await resolveRes.text().catch(() => "");
+        throw new Error(`商品 ID 解決失敗: 期待した JSON ではなく ${_contentType} を受信。body 先頭: ${bodyText.slice(0, 200)}`);
+      }
       const resolveJson = await resolveRes.json();
       if (!resolveJson?.ok) throw new Error(resolveJson?.error || "商品 ID 解決失敗");
       const handleToGid: Record<string, string> = resolveJson.handleToGid || {};
@@ -1187,7 +1196,15 @@ export default function ReviewsTab() {
         const chunkRes = await fetch(window.location.pathname + window.location.search, {
           method: "POST", body: chunkFd, signal: abort.signal, credentials: "include",
         });
-        if (!chunkRes.ok) throw new Error(`チャンク ${c + 1}/${chunks.length} 失敗 (HTTP ${chunkRes.status})`);
+        if (!chunkRes.ok) {
+          const bodyText = await chunkRes.text().catch(() => "");
+          throw new Error(`チャンク ${c + 1}/${chunks.length} 失敗 (HTTP ${chunkRes.status}): ${bodyText.slice(0, 300)}`);
+        }
+        const _ct = chunkRes.headers.get("content-type") || "";
+        if (!_ct.includes("json")) {
+          const bodyText = await chunkRes.text().catch(() => "");
+          throw new Error(`チャンク ${c + 1}/${chunks.length} 失敗: JSON ではなく ${_ct}。body: ${bodyText.slice(0, 200)}`);
+        }
         const chunkJson = await chunkRes.json();
         if (!chunkJson?.ok) throw new Error(chunkJson?.error || `チャンク ${c + 1}/${chunks.length} 失敗`);
         aggCreated += chunkJson.csvImport?.created || 0;
