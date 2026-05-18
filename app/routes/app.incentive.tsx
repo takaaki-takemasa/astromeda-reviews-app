@@ -37,7 +37,7 @@ const COUPONS_QUERY = `#graphql
 
 const SHOPIFY_DISCOUNTS_QUERY = `#graphql
   query ListShopifyDiscounts {
-    codeDiscountNodes(first: 50, query: "status:ACTIVE OR status:SCHEDULED") {
+    codeDiscountNodes(first: 50, sortKey: CREATED_AT, reverse: true) {
       edges {
         node {
           id
@@ -103,7 +103,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const dres: any = await admin.graphql(SHOPIFY_DISCOUNTS_QUERY);
     const dj = await dres.json();
     const edges = dj?.data?.codeDiscountNodes?.edges ?? [];
-    shopifyDiscounts = edges.map((e: any) => {
+    shopifyDiscounts = edges
+      .filter((e: any) => {
+        const st = e?.node?.codeDiscount?.status || "";
+        return st === "ACTIVE" || st === "SCHEDULED";
+      })
+      .map((e: any) => {
       const n = e.node;
       const d = n.codeDiscount || {};
       const valObj = d.customerGets?.value || {};
