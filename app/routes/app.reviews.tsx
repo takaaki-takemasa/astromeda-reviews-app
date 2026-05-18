@@ -294,6 +294,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
   const url = new URL(request.url);
   const tab = (url.searchParams.get("tab") as ReviewStatus | null) ?? "pending";
+  const sort = (url.searchParams.get("sort") as string | null) ?? "posted_at_desc";
   const pageParam = parseInt(url.searchParams.get("page") || "1", 10);
   const currentPage = isNaN(pageParam) || pageParam < 1 ? 1 : pageParam;
 
@@ -328,6 +329,32 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   // 現在の tab で filter
   const filteredReviews = allReviews.filter((r) => r.status === tab);
+  // ソート: posted_at_desc/asc, rating_desc/asc, approved_at_desc/asc
+  filteredReviews.sort((a, b) => {
+    if (sort === "posted_at_desc") {
+      const aT = a.posted_at ? new Date(a.posted_at).getTime() : 0;
+      const bT = b.posted_at ? new Date(b.posted_at).getTime() : 0;
+      return bT - aT;
+    }
+    if (sort === "posted_at_asc") {
+      const aT = a.posted_at ? new Date(a.posted_at).getTime() : Infinity;
+      const bT = b.posted_at ? new Date(b.posted_at).getTime() : Infinity;
+      return aT - bT;
+    }
+    if (sort === "rating_desc") return (b.rating || 0) - (a.rating || 0);
+    if (sort === "rating_asc") return (a.rating || 0) - (b.rating || 0);
+    if (sort === "approved_at_desc") {
+      const aT = a.approved_at ? new Date(a.approved_at).getTime() : 0;
+      const bT = b.approved_at ? new Date(b.approved_at).getTime() : 0;
+      return bT - aT;
+    }
+    if (sort === "approved_at_asc") {
+      const aT = a.approved_at ? new Date(a.approved_at).getTime() : Infinity;
+      const bT = b.approved_at ? new Date(b.approved_at).getTime() : Infinity;
+      return aT - bT;
+    }
+    return 0;
+  });
   const totalCount = filteredReviews.length;
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const startIdx = (currentPage - 1) * PAGE_SIZE;
@@ -350,6 +377,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       cursorHistory: [] as string[],
     },
     tabCounts,
+    sort,
   };
 };
 
@@ -1268,7 +1296,7 @@ function ReviewStorefrontPreview({ review, productImage, productTitle }: { revie
 // Main component
 // ─────────────────────────────────────────────
 export default function ReviewsTab() {
-  const { tab, reviews, pageInfo, shop, pagination, tabCounts } = useLoaderData<typeof loader>();
+  const { tab, reviews, pageInfo, shop, pagination, tabCounts, sort } = useLoaderData<typeof loader>();
 
   // pagination bar inline JSX (上段+下段で使い回し)
   // この変数は ReviewsTab 内で定義する必要がある (pagination が scope に入っているため)
@@ -1775,6 +1803,22 @@ export default function ReviewsTab() {
     { id: "rejected", content: `拒否${tabCounts ? ` (${tabCounts.rejected})` : ""}` },
   ];
 
+  // ソートオプション (各タブ共通)
+  const sortOptions = [
+    { label: "投稿日が新しい順", value: "posted_at_desc" },
+    { label: "投稿日が古い順", value: "posted_at_asc" },
+    { label: "星評価が高い順 (5→1)", value: "rating_desc" },
+    { label: "星評価が低い順 (1→5)", value: "rating_asc" },
+    { label: "承認日が新しい順", value: "approved_at_desc" },
+    { label: "承認日が古い順", value: "approved_at_asc" },
+  ];
+  const handleSortChange = (newSort: string) => {
+    const params = new URLSearchParams(window.location.search);
+    params.set("sort", newSort);
+    params.delete("page");
+    window.location.search = params.toString();
+  };
+
   const sourceBadge = (st: string) => {
     if (st === "verified_purchase") return <Badge tone="success">認証購入</Badge>;
     if (st === "gift_recipient") return <Badge tone="info">ギフト</Badge>;
@@ -1997,6 +2041,18 @@ export default function ReviewsTab() {
           <Card>
             <BlockStack gap="0">
               <Tabs tabs={tabs} selected={tabIndex < 0 ? 0 : tabIndex} onSelect={handleTabChange} />
+              <div style={{ padding: "12px 16px", display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, borderBottom: "1px solid #e1e3e5" }}>
+                <span style={{ fontSize: 13, color: "#616161" }}>並び替え:</span>
+                <div style={{ minWidth: 220 }}>
+                  <Select
+                    label=""
+                    labelHidden
+                    options={sortOptions}
+                    value={sort}
+                    onChange={handleSortChange}
+                  />
+                </div>
+              </div>
               {reviews.length === 0 ? (
                 <EmptyState
                   heading={tab === "pending" ? "承認待ちのレビューはありません" : tab === "approved" ? "公開中のレビューはまだありません" : "拒否されたレビューはありません"}
