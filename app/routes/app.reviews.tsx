@@ -673,22 +673,116 @@ const PRODUCT_REVIEWS_HTML_QUERY = `#graphql
   }
 `;
 
+// v10: approved_reviews 索引 metafield を読んで対象 review だけを nodes() で取得する高速版
+// 1028件全件スキャンが不要になり、Vercel 60秒タイムアウトを回避できる
+const PRODUCT_APPROVED_LIST_QUERY = `#graphql
+  query GetApprovedList($id: ID!) {
+    product(id: $id) {
+      title
+      reviewsHtml: metafield(namespace: "astromeda", key: "reviews_html") { value }
+      approvedReviews: metafield(namespace: "astromeda", key: "approved_reviews") { value }
+    }
+  }
+`;
+
+const REVIEW_NODES_QUERY = `#graphql
+  query GetReviewNodes($ids: [ID!]!) {
+    nodes(ids: $ids) {
+      ... on Metaobject {
+        id
+        updatedAt
+        fields { key value }
+      }
+    }
+  }
+`;
+
+async function getProductApprovedList(admin: any, productGid: string): Promise<{ title: string; existingHtml: string; ids: string[] }> {
+  const r: any = await admin.graphql(PRODUCT_APPROVED_LIST_QUERY, { variables: { id: productGid } });
+  const j = await r.json();
+  const title: string = j?.data?.product?.title || "";
+  const existingHtml: string = j?.data?.product?.reviewsHtml?.value || "";
+  const rawList: string = j?.data?.product?.approvedReviews?.value || "[]";
+  let ids: string[] = [];
+  try { const parsed = JSON.parse(rawList); if (Array.isArray(parsed)) ids = parsed.filter((x: any) => typeof x === "string"); } catch (e) { /* invalid JSON */ }
+  return { title, existingHtml, ids };
+}
+
+async function setProductApprovedList(admin: any, productGid: string, ids: string[]): Promise<void> {
+  await admin.graphql(PRODUCT_METAFIELD_SET, {
+    variables: {
+      metafields: [{
+        ownerId: productGid,
+        namespace: "astromeda",
+        key: "approved_reviews",
+        type: "list.metaobject_reference",
+        value: JSON.stringify(ids),
+      }],
+    },
+  });
+}
+
+async function addReviewToProductList(admin: any, productGid: string, reviewGid: string): Promise<string[]> {
+  const { ids } = await getProductApprovedList(admin, productGid);
+  if (!ids.includes(reviewGid)) ids.push(reviewGid);
+  await setProductApprovedList(admin, productGid, ids);
+  return ids;
+}
+
+async function removeReviewFromProductList(admin: any, productGid: string, reviewGid: string): Promise<string[]> {
+  const { ids } = await getProductApprovedList(admin, productGid);
+  const filtered = ids.filter((id) => id !== reviewGid);
+  if (filtered.length !== ids.length) await setProductApprovedList(admin, productGid, filtered);
+  return filtered;
+}
+
+async function fetchReviewsByIds(admin: any, ids: string[]): Promise<any[]> {
+  if (ids.length === 0) return [];
+  const r: any = await admin.graphql(REVIEW_NODES_QUERY, { variables: { ids } });
+  const j = await r.json();
+  const nodes: any[] = j?.data?.nodes ?? [];
+  const reviews: any[] = [];
+  for (const n of nodes) {
+    if (!n || !n.id) continue;
+    const fmap: Record<string, string> = {};
+    for (const f of (n.fields || [])) fmap[f.key] = f.value;
+    // approved 以外は skip (リストにあっても status が変わっている可能性)
+    if (fmap.status !== "approved") continue;
+    reviews.push({
+      id: n.id,
+      rating: fmap.rating || "5",
+      title: fmap.title || "",
+      body: fmap.body || "",
+      reviewer_name: fmap.reviewer_name || "",
+      source_type: fmap.source_type || "",
+      posted_at: fmap.posted_at || "",
+      photos: [],
+    });
+  }
+  // posted_at 新しい順
+  reviews.sort((a, b) => {
+    const aT = a.posted_at ? new Date(a.posted_at).getTime() : 0;
+    const bT = b.posted_at ? new Date(b.posted_at).getTime() : 0;
+    return bT - aT;
+  });
+  return reviews;
+}
+
 async function regenerateProductReviewsHtml(admin: any, productGid: string): Promise<{ ok: boolean; count: number; skipped?: boolean; error?: string }> {
   try {
     if (!productGid || !productGid.startsWith("gid://shopify/Product/")) return { ok: false, count: 0, error: "invalid product gid" };
-    // 既存 HTML + title を 1 回の query で取得
-    let existingHtml = "";
-    let productTitle = "";
-    try {
-      const pres: any = await admin.graphql(PRODUCT_REVIEWS_HTML_QUERY, { variables: { id: productGid } });
-      const pjson = await pres.json();
-      productTitle = pjson?.data?.product?.title || "";
-      existingHtml = pjson?.data?.product?.metafield?.value || "";
-    } catch (e) { /* skip */ }
-    const reviews = await fetchProductApprovedReviewsForProduct(admin, productGid);
+    // 1. product info + 既存 HTML + approved_reviews 索引リストを 1 query で取得
+    const { title: productTitle, existingHtml, ids } = await getProductApprovedList(admin, productGid);
+    // 2. 索引リストにある review ID だけ nodes() で取得
+    const reviews = await fetchReviewsByIds(admin, ids);
+    // 3. リストにあるが status が approved でない (=stale) を filter で除外していたら、リストも掃除
+    if (reviews.length !== ids.length) {
+      const liveIds = reviews.map((r) => r.id);
+      await setProductApprovedList(admin, productGid, liveIds);
+    }
+    // 4. HTML 描画 + 比較 skip + write
     const html = renderReviewsContainerHtml(reviews, productTitle);
     const valueToWrite = html || "(no reviews)";
-    // v8: 既存と同じなら write skip (API call 削減)
     if (existingHtml === valueToWrite) {
       return { ok: true, count: reviews.length, skipped: true };
     }
@@ -1630,17 +1724,31 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }),
   );
 
-  // v7: approve/reject 後に対象 product の reviews_html を再生成
-  const productGids = new Set<string>();
+  // v10: approve/reject 時に approved_reviews 索引リストを incremental 更新 → 高速 regenerate
+  // 1. review ごとに product_ref を取得
+  const reviewProductMap = new Map<string, string>();
   for (const id of ids) {
     try {
       const r: any = await admin.graphql(`query R($id:ID!){metaobject(id:$id){fields{key value}}}`, { variables: { id } });
       const j = await r.json();
       const fields = j?.data?.metaobject?.fields ?? [];
       const prodRef = fields.find((f: any) => f.key === "product_ref")?.value;
-      if (prodRef) productGids.add(prodRef);
+      if (prodRef) reviewProductMap.set(id, prodRef);
     } catch (e) { /* skip */ }
   }
+  // 2. approve なら list に追加 / reject なら list から削除
+  const productGids = new Set<string>();
+  for (const [reviewId, productGid] of reviewProductMap.entries()) {
+    productGids.add(productGid);
+    try {
+      if (intent === "approve") {
+        await addReviewToProductList(admin, productGid, reviewId);
+      } else if (intent === "reject") {
+        await removeReviewFromProductList(admin, productGid, reviewId);
+      }
+    } catch (e) { /* skip; regenerate will still run */ }
+  }
+  // 3. 対象 product の HTML を再生成 (索引リスト経由で高速)
   for (const productGid of productGids) {
     await regenerateProductReviewsHtml(admin, productGid);
   }
