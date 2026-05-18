@@ -1,17 +1,66 @@
 import { Page, Layout, Card, BlockStack, Text, Banner, Link as PolarisLink, InlineStack, Badge } from "@shopify/polaris";
-import { Link } from "@remix-run/react";
+import { Link, useLoaderData } from "@remix-run/react";
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
 
+const COUNT_QUERY = `#graphql
+  query CountReviews($first: Int!, $after: String) {
+    metaobjects(type: "astromeda_review", first: $first, after: $after) {
+      edges {
+        node {
+          fields { key value }
+        }
+      }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+`;
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  await authenticate.admin(request);
+  const { admin } = await authenticate.admin(request);
+
+  // ─── 全件取得 → status 別に集計 (admin.reviews と同じ方式) ───
+  const statuses: string[] = [];
+  let cursor: string | null = null;
+  let safety = 0;
+  try {
+    while (safety < 50) {
+      const res: any = await admin.graphql(COUNT_QUERY, {
+        variables: { first: 250, after: cursor },
+      });
+      const json = await res.json();
+      const edges = json.data?.metaobjects?.edges ?? [];
+      for (const edge of edges) {
+        const fields = edge?.node?.fields ?? [];
+        const statusField = fields.find((f: any) => f?.key === "status");
+        statuses.push((statusField?.value as string) || "pending");
+      }
+      const pageInfo = json.data?.metaobjects?.pageInfo;
+      if (!pageInfo?.hasNextPage) break;
+      cursor = pageInfo.endCursor;
+      safety++;
+    }
+  } catch (e) {
+    console.error("[app._index] count fetch failed", e);
+  }
+
+  const counts = {
+    pending: statuses.filter((s) => s === "pending").length,
+    approved: statuses.filter((s) => s === "approved").length,
+    rejected: statuses.filter((s) => s === "rejected").length,
+    total: statuses.length,
+    queue: 0,
+  };
+
   return {
     phase: "A + B + C foundation 完了 / Phase D Polaris UI 配管中",
-    counts: { pending: 0, total: 0, queue: 0 },
+    counts,
   };
 };
 
 export default function HomeDashboard() {
+  const { counts } = useLoaderData<typeof loader>();
+
   return (
     <Page title="ASTROMEDA 口コミ管理">
       <BlockStack gap="500">
@@ -29,7 +78,7 @@ export default function HomeDashboard() {
               <BlockStack gap="200">
                 <Text as="h3" variant="headingMd">レビュー一覧</Text>
                 <Text as="p" variant="bodyMd">
-                  承認待ち <Badge tone="attention">0</Badge> / 公開中 <Badge tone="success">0</Badge>
+                  承認待ち <Badge tone="attention">{String(counts.pending)}</Badge> / 公開中 <Badge tone="success">{String(counts.approved)}</Badge>
                 </Text>
                 <Link to="/app/reviews">レビュー一覧を開く →</Link>
               </BlockStack>
@@ -62,7 +111,7 @@ export default function HomeDashboard() {
               <BlockStack gap="200">
                 <Text as="h3" variant="headingMd">送信キュー</Text>
                 <Text as="p" variant="bodyMd">
-                  Shopify Flow 経由の送信予約 <Badge tone="info">0</Badge>
+                  Shopify Flow 経由の送信予約 <Badge tone="info">{String(counts.queue)}</Badge>
                 </Text>
                 <Link to="/app/queue">送信キューを開く →</Link>
               </BlockStack>
