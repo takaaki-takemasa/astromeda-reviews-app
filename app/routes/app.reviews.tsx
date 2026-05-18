@@ -65,6 +65,7 @@ interface ReviewItem {
   reply_text: string;
   approved_at: string;
   approved_by: string;
+  posted_at: string;
   created_at: string;
   product: ProductRef | null;
   photos: PhotoSlot[];
@@ -284,6 +285,7 @@ function extractReview(edge: {
     reply_text: fieldVal(node, "reply_text"),
     approved_at: fieldVal(node, "approved_at"),
     approved_by: fieldVal(node, "approved_by"),
+    posted_at: fieldVal(node, "posted_at"),
     created_at: node.updatedAt,
     product,
     photos,
@@ -1316,7 +1318,7 @@ function splitTranslation(body) {
 // Storefront preview card (matches typical Astromeda review card styling)
 // ─────────────────────────────────────────────
 function ReviewStorefrontPreview({ review, productImage, productTitle }: { review: ReviewItem; productImage?: string | null; productTitle?: string }) {
-  const dateText = new Date(review.created_at).toLocaleDateString("ja-JP", {
+  const dateText = new Date(review.posted_at || review.created_at).toLocaleDateString("ja-JP", {
     year: "numeric", month: "long", day: "numeric",
   });
 
@@ -2093,7 +2095,7 @@ export default function ReviewsTab() {
             {r.reviewer_name || "—"}
           </span>
           <span style={{ color: "#9ca3af", fontSize: 10 }}>
-            {new Date(r.created_at).toLocaleDateString("ja-JP", { year: "2-digit", month: "numeric", day: "numeric" })}
+            {new Date(r.posted_at || r.created_at).toLocaleDateString("ja-JP", { year: "2-digit", month: "numeric", day: "numeric" })}
           </span>
         </div>
       </IndexTable.Cell>
@@ -2555,7 +2557,7 @@ export default function ReviewsTab() {
                         })()}
                       </div>
                       <Text as="p" variant="bodySm" tone="subdued">
-                        投稿日時: {new Date(detailReview.created_at).toLocaleString("ja-JP")}
+                        投稿日時: {new Date(detailReview.posted_at || detailReview.created_at).toLocaleString("ja-JP")}
                         {detailReview.approved_at ? ` / 承認日時: ${new Date(detailReview.approved_at).toLocaleString("ja-JP")} (by ${detailReview.approved_by})` : ""}
                       </Text>
                     </BlockStack>
