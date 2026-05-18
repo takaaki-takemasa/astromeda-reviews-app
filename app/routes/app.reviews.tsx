@@ -697,41 +697,78 @@ const REVIEW_NODES_QUERY = `#graphql
   }
 `;
 
-async function getProductApprovedList(admin: any, productGid: string): Promise<{ title: string; existingHtml: string; ids: string[] }> {
-  const r: any = await admin.graphql(PRODUCT_APPROVED_LIST_QUERY, { variables: { id: productGid } });
-  const j = await r.json();
-  const title: string = j?.data?.product?.title || "";
-  const existingHtml: string = j?.data?.product?.reviewsHtml?.value || "";
-  const rawList: string = j?.data?.product?.approvedReviews?.value || "[]";
+// v11: Product metafield ではなく Metaobject cache に保存
+// (write_products scope なしでも write_metaobjects だけで完結)
+// cache.handle = product handle で 1:1 紐付け
+async function getProductApprovedList(admin: any, productGid: string): Promise<{ title: string; existingHtml: string; ids: string[]; cacheId: string | null }> {
+  // product info
+  let title = "";
+  let productHandle = "";
+  try {
+    const pres: any = await admin.graphql(`query P($id: ID!) { product(id: $id) { title handle } }`, { variables: { id: productGid } });
+    const pjson = await pres.json();
+    title = pjson?.data?.product?.title || "";
+    productHandle = pjson?.data?.product?.handle || "";
+  } catch (e) { /* skip */ }
+  if (!productHandle) return { title, existingHtml: "", ids: [], cacheId: null };
+  // cache metaobject (handle = product.handle)
+  let existingHtml = "";
   let ids: string[] = [];
-  try { const parsed = JSON.parse(rawList); if (Array.isArray(parsed)) ids = parsed.filter((x: any) => typeof x === "string"); } catch (e) { /* invalid JSON */ }
-  return { title, existingHtml, ids };
+  let cacheId: string | null = null;
+  try {
+    const cres: any = await admin.graphql(`query C($handle: MetaobjectHandleInput!) { metaobjectByHandle(handle: $handle) { id fields { key value } } }`, {
+      variables: { handle: { type: "astromeda_product_reviews_cache", handle: productHandle } },
+    });
+    const cjson = await cres.json();
+    const cache = cjson?.data?.metaobjectByHandle;
+    if (cache) {
+      cacheId = cache.id;
+      for (const f of (cache.fields || [])) {
+        if (f.key === "html") existingHtml = f.value || "";
+        else if (f.key === "approved_review_ids") {
+          try { const parsed = JSON.parse(f.value || "[]"); if (Array.isArray(parsed)) ids = parsed.filter((x: any) => typeof x === "string"); } catch (e) { /* skip */ }
+        }
+      }
+    }
+  } catch (e) { /* skip */ }
+  return { title, existingHtml, ids, cacheId };
 }
 
-async function setProductApprovedList(admin: any, productGid: string, ids: string[]): Promise<void> {
-  const res: any = await admin.graphql(PRODUCT_METAFIELD_SET, {
+async function setCacheApprovedIds(admin: any, productGid: string, productHandle: string, ids: string[]): Promise<void> {
+  const res: any = await admin.graphql(`mutation Upsert($handle: MetaobjectHandleInput!, $metaobject: MetaobjectUpsertInput!) { metaobjectUpsert(handle: $handle, metaobject: $metaobject) { metaobject { id } userErrors { field message code } } }`, {
     variables: {
-      metafields: [{
-        ownerId: productGid,
-        namespace: "astromeda",
-        key: "approved_reviews",
-        type: "list.metaobject_reference",
-        value: JSON.stringify(ids),
-      }],
+      handle: { type: "astromeda_product_reviews_cache", handle: productHandle },
+      metaobject: {
+        fields: [
+          { key: "product_ref", value: productGid },
+          { key: "approved_review_ids", value: JSON.stringify(ids) },
+        ],
+      },
     },
   });
   const json = await res.json();
-  const errs = json?.data?.metafieldsSet?.userErrors ?? [];
+  const errs = json?.data?.metaobjectUpsert?.userErrors ?? [];
   if (errs.length > 0) {
-    console.error("[SET-LIST] userErrors", { productGid, idsLen: ids.length, errs });
+    console.error("[SET-CACHE-IDS] userErrors", { productGid, errs });
   } else {
-    console.log("[SET-LIST] ok", { productGid, idsLen: ids.length });
+    console.log("[SET-CACHE-IDS] ok", { productGid, idsLen: ids.length });
   }
+}
+
+// 後方互換: 旧名 setProductApprovedList を新 helper にエイリアス
+async function setProductApprovedList(admin: any, productGid: string, ids: string[]): Promise<void> {
+  // need product handle - look it up
+  try {
+    const pres: any = await admin.graphql(`query P($id: ID!) { product(id: $id) { handle } }`, { variables: { id: productGid } });
+    const pjson = await pres.json();
+    const productHandle: string = pjson?.data?.product?.handle || "";
+    if (productHandle) await setCacheApprovedIds(admin, productGid, productHandle, ids);
+  } catch (e: any) { console.error("[SET-LIST→CACHE] FAIL", { productGid, error: e?.message }); }
 }
 
 async function addReviewToProductList(admin: any, productGid: string, reviewGid: string): Promise<string[]> {
   try {
-    console.log("[ADD-LIST] enter", { productGid, reviewGid });
+    console.log("[ADD-LIST] enter (cache)", { productGid, reviewGid });
     const { ids } = await getProductApprovedList(admin, productGid);
     console.log("[ADD-LIST] current list", { productGid, currentLen: ids.length });
     if (!ids.includes(reviewGid)) ids.push(reviewGid);
@@ -783,16 +820,51 @@ async function fetchReviewsByIds(admin: any, ids: string[]): Promise<any[]> {
   return reviews;
 }
 
+// v11: Product metafield ではなく Metaobject `astromeda_product_reviews_cache` に保存
+// → write_products scope 不要 (Embedded App の write_metaobjects scope だけで完結)
+// cache の handle は product handle (例: keyboard-sanrio-characters-collaboration-kuromi)
+const CACHE_BY_HANDLE_QUERY = `#graphql
+  query GetCache($handle: MetaobjectHandleInput!) {
+    metaobjectByHandle(handle: $handle) {
+      id
+      fields { key value }
+    }
+  }
+`;
+
+const PRODUCT_TITLE_HANDLE_QUERY = `#graphql
+  query GetProductTitleHandle($id: ID!) {
+    product(id: $id) {
+      title
+      handle
+    }
+  }
+`;
+
+const METAOBJECT_UPSERT_MUTATION = `#graphql
+  mutation UpsertCache($handle: MetaobjectHandleInput!, $metaobject: MetaobjectUpsertInput!) {
+    metaobjectUpsert(handle: $handle, metaobject: $metaobject) {
+      metaobject { id handle }
+      userErrors { field message code }
+    }
+  }
+`;
+
 async function regenerateProductReviewsHtml(admin: any, productGid: string): Promise<{ ok: boolean; count: number; skipped?: boolean; error?: string }> {
   try {
     console.log("[REGEN] enter", { productGid });
-    if (!productGid || !productGid.startsWith("gid://shopify/Product/")) { 
+    if (!productGid || !productGid.startsWith("gid://shopify/Product/")) {
       console.error("[REGEN] invalid gid", { productGid });
-      return { ok: false, count: 0, error: "invalid product gid" }; 
+      return { ok: false, count: 0, error: "invalid product gid" };
     }
-    // 1. product info + 既存 HTML + approved_reviews 索引リストを 1 query で取得
-    const { title: productTitle, existingHtml, ids } = await getProductApprovedList(admin, productGid);
-    console.log("[REGEN] got product info", { productGid, productTitle, existingHtmlLen: existingHtml.length, idsLen: ids.length });
+    // 1. product info (title, handle) + 既存 approved_reviews 索引
+    const { title: productTitle, ids } = await getProductApprovedList(admin, productGid);
+    // product handle も必要 (cache の handle として使う)
+    const pres: any = await admin.graphql(PRODUCT_TITLE_HANDLE_QUERY, { variables: { id: productGid } });
+    const pjson = await pres.json();
+    const productHandle: string = pjson?.data?.product?.handle || "";
+    console.log("[REGEN] got product info", { productGid, productTitle, productHandle, idsLen: ids.length });
+    if (!productHandle) { console.error("[REGEN] no handle", { productGid }); return { ok: false, count: 0, error: "no product handle" }; }
     // 2. 索引リストにある review ID だけ nodes() で取得
     const reviews = await fetchReviewsByIds(admin, ids);
     console.log("[REGEN] fetched reviews", { productGid, reviewsLen: reviews.length });
@@ -800,34 +872,33 @@ async function regenerateProductReviewsHtml(admin: any, productGid: string): Pro
     if (reviews.length !== ids.length) {
       const liveIds = reviews.map((r) => r.id);
       console.log("[REGEN] stale cleanup", { productGid, before: ids.length, after: liveIds.length });
-      await setProductApprovedList(admin, productGid, liveIds);
+      try { await setProductApprovedList(admin, productGid, liveIds); } catch (e: any) { console.error("[REGEN] stale cleanup FAIL", { error: e?.message }); }
     }
-    // 4. HTML 描画 + 比較 skip + write
+    // 4. HTML 描画
     const html = renderReviewsContainerHtml(reviews, productTitle);
     const valueToWrite = html || "(no reviews)";
-    console.log("[REGEN] html ready", { productGid, htmlLen: valueToWrite.length, existingMatches: existingHtml === valueToWrite });
-    if (existingHtml === valueToWrite) {
-      console.log("[REGEN] skip (unchanged)", { productGid });
-      return { ok: true, count: reviews.length, skipped: true };
-    }
-    const res: any = await admin.graphql(PRODUCT_METAFIELD_SET, {
+    console.log("[REGEN] html ready", { productGid, htmlLen: valueToWrite.length });
+    // 5. Metaobject upsert (handle = product handle)
+    const res: any = await admin.graphql(METAOBJECT_UPSERT_MUTATION, {
       variables: {
-        metafields: [{
-          ownerId: productGid,
-          namespace: "astromeda",
-          key: "reviews_html",
-          type: "multi_line_text_field",
-          value: valueToWrite,
-        }],
+        handle: { type: "astromeda_product_reviews_cache", handle: productHandle },
+        metaobject: {
+          fields: [
+            { key: "product_ref", value: productGid },
+            { key: "html", value: valueToWrite },
+            { key: "count", value: String(reviews.length) },
+          ],
+        },
       },
     });
     const json = await res.json();
-    const errs = json?.data?.metafieldsSet?.userErrors ?? [];
-    if (errs.length > 0) { 
-      console.error("[REGEN] metafieldsSet userErrors", { productGid, errs });
-      return { ok: false, count: reviews.length, error: errs.map((e: any) => e.message).join(", ") }; 
+    const errs = json?.data?.metaobjectUpsert?.userErrors ?? [];
+    if (errs.length > 0) {
+      console.error("[REGEN] metaobjectUpsert userErrors", { productGid, errs });
+      return { ok: false, count: reviews.length, error: errs.map((e: any) => e.message).join(", ") };
     }
-    console.log("[REGEN] DONE", { productGid, count: reviews.length, htmlLen: valueToWrite.length });
+    const cacheId = json?.data?.metaobjectUpsert?.metaobject?.id;
+    console.log("[REGEN] DONE (Metaobject cache)", { productGid, productHandle, cacheId, count: reviews.length, htmlLen: valueToWrite.length });
     return { ok: true, count: reviews.length, skipped: false };
   } catch (e: any) {
     console.error("[REGEN] CAUGHT", { productGid, error: e?.message ?? String(e), stack: e?.stack?.slice(0, 500) });
