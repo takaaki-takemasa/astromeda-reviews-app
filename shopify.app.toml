@@ -26,7 +26,7 @@ include_config_on_deploy = true
 # - read/write_metaobject_definitions: Metaobject 定義作成 (初回 setup)
 # - read/write_files: お客様アップロード写真を Shopify Files へ保存
 # - read_content: Storefront 表示連携時に Article/Page の参照
-scopes = "read_orders,read_customers,read_products,write_products,read_metaobjects,write_metaobjects,read_metaobject_definitions,write_metaobject_definitions,read_files,write_files,read_content"
+scopes = "read_orders,write_draft_orders,read_customers,write_customers,read_products,write_products,read_discounts,write_discounts,read_metaobjects,write_metaobjects,read_metaobject_definitions,write_metaobject_definitions,read_files,write_files,read_content"
 
 [auth]
 redirect_urls = [

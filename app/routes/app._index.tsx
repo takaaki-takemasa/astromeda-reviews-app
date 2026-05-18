@@ -98,6 +98,17 @@ export default function HomeDashboard() {
           <Layout.Section variant="oneThird">
             <Card>
               <BlockStack gap="200">
+                <Text as="h3" variant="headingMd">🎁 インセンティブ統合</Text>
+                <Text as="p" variant="bodyMd">
+                  レビュー投稿でお客様に次回利用クーポンを自動発行。投稿率を最大4倍に。
+                </Text>
+                <Link to="/app/incentive">インセンティブ設定を開く →</Link>
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+          <Layout.Section variant="oneThird">
+            <Card>
+              <BlockStack gap="200">
                 <Text as="h3" variant="headingMd">メール設定</Text>
                 <Text as="p" variant="bodyMd">
                   IP / カテゴリ別の依頼メール文面を編集
