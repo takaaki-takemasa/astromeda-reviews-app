@@ -434,6 +434,202 @@ function appendTranslation(original: string, translation: string | null): string
   return original + "\n\n" + TRANSLATION_MARKER_SERVER + "\n\n" + translation;
 }
 
+
+// ════════════════════════════════════════════════════════════
+// 静的 HTML 書き換えヘルパー (admin が approve/reject 時に呼ぶ)
+// ════════════════════════════════════════════════════════════
+
+const PRODUCT_REVIEWS_QUERY = `#graphql
+  query ProductApprovedReviews($productId: ID!, $first: Int!) {
+    metaobjects(type: "astromeda_review", first: $first) {
+      edges {
+        node {
+          id
+          fields {
+            key
+            value
+            reference {
+              ... on Product { id }
+              ... on MediaImage { image { url altText } }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+const PRODUCT_METAFIELD_SET = `#graphql
+  mutation SetReviewsHtml($metafields: [MetafieldsSetInput!]!) {
+    metafieldsSet(metafields: $metafields) {
+      metafields { id }
+      userErrors { field message code }
+    }
+  }
+`;
+
+function escapeHtml(s: any): string {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function newlineToBr(s: string): string {
+  return s.replace(/\r?\n/g, "<br>");
+}
+
+function renderReviewCardHtml(r: any, productTitle: string): string {
+  const rating = parseInt(r.rating || "0", 10);
+  const source = r.source_type || "";
+  const stars = "★".repeat(rating) + `<span style="color:#d1d5db">${"★".repeat(Math.max(0,5-rating))}</span>`;
+  let badge = "";
+  if (source === "verified_purchase") badge = `<span class="astro-review-card__badge astro-review-card__badge--verified">✓ 認証購入</span>`;
+  else if (source === "gift_recipient") badge = `<span class="astro-review-card__badge astro-review-card__badge--gift">🎁 ギフト受領</span>`;
+  const titleHtml = r.title ? `<h3 class="astro-review-card__title">${escapeHtml(r.title)}</h3>` : "";
+  const body = r.body || "";
+  const TRANSLATION_MARKER = "──── 日本語訳 ────";
+  const parts = body.split(TRANSLATION_MARKER);
+  const original = (parts[0] || "").trim();
+  const translation = (parts[1] || "").trim();
+  let bodyHtml = original ? `<p class="astro-review-card__body">${newlineToBr(escapeHtml(original))}</p>` : "";
+  if (translation) {
+    bodyHtml += `<div class="astro-review-card__translation"><span class="astro-review-card__translation-badge">🇯🇵 日本語訳</span><p class="astro-review-card__translation-body">${newlineToBr(escapeHtml(translation))}</p></div>`;
+  }
+  let photosHtml = "";
+  const photos = (r.photos || []).filter((p: any) => p && p.url);
+  if (photos.length > 0) {
+    photosHtml = `<div class="astro-review-card__photos">` + photos.map((p: any) => `<a href="${escapeHtml(p.url)}" target="_blank" rel="noopener"><img src="${escapeHtml(p.url)}" alt="${escapeHtml(r.title || "")}" loading="lazy"></a>`).join("") + `</div>`;
+  }
+  const author = r.reviewer_name ? escapeHtml(r.reviewer_name) : "匿名";
+  let dateStr = "";
+  if (r.posted_at) {
+    const d = new Date(r.posted_at);
+    if (isFinite(d.getTime())) dateStr = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`;
+  }
+  return `<article class="astro-review-card" itemscope itemtype="https://schema.org/Review"><meta itemprop="itemReviewed" content="${escapeHtml(productTitle)}"><div itemprop="reviewRating" itemscope itemtype="https://schema.org/Rating" style="display:inline"><meta itemprop="ratingValue" content="${rating}"><meta itemprop="bestRating" content="5"><div class="astro-review-card__stars">${stars}${badge}</div></div>${titleHtml}${bodyHtml}${photosHtml}<footer class="astro-review-card__footer"><span itemprop="author">— ${author}</span><time>${dateStr}</time></footer></article>`;
+}
+
+function renderReviewsContainerHtml(reviews: any[], productTitle: string): string {
+  if (reviews.length === 0) return "";
+  const count = reviews.length;
+  const sampleSize = Math.min(50, count);
+  let sumRating = 0;
+  for (let i = 0; i < sampleSize; i++) sumRating += parseInt(reviews[i].rating || "0", 10);
+  const avg = (Math.round(sumRating * 10 / sampleSize) / 10).toFixed(1);
+  const avgRounded = Math.round(sumRating / sampleSize);
+  const avgStars = "★".repeat(avgRounded) + `<span style="color:#d1d5db">${"★".repeat(Math.max(0,5-avgRounded))}</span>`;
+  const maxShow = 6;
+  const cardsHtml = reviews.slice(0, maxShow).map(r => renderReviewCardHtml(r, productTitle)).join("");
+  const moreHint = count > maxShow ? `<div class="astro-reviews__more-hint">残り ${count - maxShow} 件のレビュー (今後対応予定)</div>` : "";
+  const STYLE = `<style>.astro-reviews{max-width:1100px;margin:48px auto;padding:0 16px;font-family:-apple-system,BlinkMacSystemFont,'Hiragino Sans',sans-serif}.astro-reviews__heading{font-size:24px;font-weight:700;color:#06060C;margin:0 0 4px}.astro-reviews__sub{font-size:11px;color:#9ca3af;letter-spacing:2px;margin:0 0 20px}.astro-reviews__summary{display:flex;gap:28px;align-items:center;padding:24px;background:#fafbfc;border-radius:12px;margin-bottom:24px;flex-wrap:wrap}.astro-reviews__avg-num{font-size:48px;font-weight:800;color:#06060C;line-height:1}.astro-reviews__avg-stars{color:#ffa500;font-size:22px;letter-spacing:2px}.astro-reviews__avg-count{font-size:18px;color:#06060C;margin-top:10px;font-weight:700}.astro-reviews__list{display:grid;grid-template-columns:1fr;gap:16px}@media (min-width:768px){.astro-reviews__list{grid-template-columns:1fr 1fr}}.astro-review-card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px}.astro-review-card__stars{color:#ffa500;font-size:18px;letter-spacing:2px;margin-bottom:6px}.astro-review-card__badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:4px;margin-left:8px;vertical-align:2px}.astro-review-card__badge--verified{background:#ecfdf5;color:#059669;border:1px solid #d1fae5}.astro-review-card__badge--gift{background:#f0f9ff;color:#0284c7;border:1px solid #bae6fd}.astro-review-card__title{font-size:16px;font-weight:700;color:#111827;margin:4px 0 8px;line-height:1.4}.astro-review-card__body{font-size:14px;color:#374151;line-height:1.7;margin:0;white-space:pre-wrap}.astro-review-card__translation{margin-top:12px;padding-top:10px;border-top:1px dashed #cbd5e1}.astro-review-card__translation-badge{display:inline-block;padding:2px 8px;background:#eef2ff;color:#4338ca;border-radius:4px;font-size:11px;font-weight:700;margin-bottom:6px}.astro-review-card__translation-body{margin:0;font-size:13px;color:#6b7280;line-height:1.7;white-space:pre-wrap}.astro-review-card__photos{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}.astro-review-card__photos img{width:100%;height:100px;object-fit:cover;border-radius:6px}.astro-review-card__footer{margin-top:16px;padding-top:12px;border-top:1px solid #f3f4f6;font-size:12px;color:#6b7280;display:flex;justify-content:space-between}.astro-reviews__more-hint{margin-top:16px;text-align:center;font-size:13px;color:#6b7280}</style>`;
+  return `${STYLE}<section class="astro-reviews" aria-labelledby="astro-reviews-heading"><h2 id="astro-reviews-heading" class="astro-reviews__heading">商品レビュー</h2><p class="astro-reviews__sub">PRODUCT REVIEWS</p><div class="astro-reviews__summary"><div style="text-align:center;"><div class="astro-reviews__avg-num">${avg}</div><div class="astro-reviews__avg-stars">${avgStars}</div><div class="astro-reviews__avg-count">合計 ${count} 件のレビュー</div></div></div><div class="astro-reviews__list">${cardsHtml}</div>${moreHint}</section>`;
+}
+
+async function fetchProductApprovedReviewsForProduct(admin: any, productGid: string): Promise<any[]> {
+  // 全 metaobjects を fetch して product_ref で filter (250 単位ページネーション)
+  const approved: any[] = [];
+  let cursor: string | null = null;
+  let safety = 0;
+  while (safety < 50) {
+    const res: any = await admin.graphql(LIST_QUERY, { variables: { first: 250, after: cursor } });
+    const json = await res.json();
+    const edges = json.data?.metaobjects?.edges ?? [];
+    for (const edge of edges) {
+      const node = edge?.node;
+      const fields = node?.fields ?? [];
+      const fmap: any = {};
+      for (const f of fields) fmap[f.key] = f;
+      const status = fmap.status?.value || "pending";
+      const prodRefRaw = fmap.product_ref?.value || "";
+      if (status !== "approved") continue;
+      if (prodRefRaw !== productGid) continue;
+      const photos: any[] = [];
+      for (let i = 1; i <= 6; i++) {
+        const pk = "photo_" + i;
+        const ref = fmap[pk]?.reference;
+        if (ref && ref.image && ref.image.url) photos.push({ url: ref.image.url });
+      }
+      approved.push({
+        id: node.id,
+        rating: fmap.rating?.value || "5",
+        title: fmap.title?.value || "",
+        body: fmap.body?.value || "",
+        reviewer_name: fmap.reviewer_name?.value || "",
+        source_type: fmap.source_type?.value || "",
+        posted_at: fmap.posted_at?.value || "",
+        photos,
+      });
+    }
+    const pageInfo = json.data?.metaobjects?.pageInfo;
+    if (!pageInfo?.hasNextPage) break;
+    cursor = pageInfo.endCursor;
+    safety++;
+  }
+  // posted_at 新しい順にソート
+  approved.sort((a, b) => {
+    const aT = a.posted_at ? new Date(a.posted_at).getTime() : 0;
+    const bT = b.posted_at ? new Date(b.posted_at).getTime() : 0;
+    return bT - aT;
+  });
+  return approved;
+}
+
+async function fetchProductTitle(admin: any, productGid: string): Promise<string> {
+  try {
+    const res: any = await admin.graphql(`query ProductTitle($id:ID!){product(id:$id){title}}`, { variables: { id: productGid } });
+    const json = await res.json();
+    return json?.data?.product?.title || "";
+  } catch (e) {
+    return "";
+  }
+}
+
+async function regenerateProductReviewsHtml(admin: any, productGid: string): Promise<{ ok: boolean; count: number; error?: string }> {
+  try {
+    if (!productGid || !productGid.startsWith("gid://shopify/Product/")) return { ok: false, count: 0, error: "invalid product gid" };
+    const reviews = await fetchProductApprovedReviewsForProduct(admin, productGid);
+    const productTitle = await fetchProductTitle(admin, productGid);
+    const html = renderReviewsContainerHtml(reviews, productTitle);
+    // metafield に保存 (空 HTML でも上書きして古い HTML を消す)
+    const res: any = await admin.graphql(PRODUCT_METAFIELD_SET, {
+      variables: {
+        metafields: [{
+          ownerId: productGid,
+          namespace: "astromeda",
+          key: "reviews_html",
+          type: "multi_line_text_field",
+          value: html || "(no reviews)",
+        }],
+      },
+    });
+    const json = await res.json();
+    const errs = json?.data?.metafieldsSet?.userErrors ?? [];
+    if (errs.length > 0) return { ok: false, count: reviews.length, error: errs.map((e: any) => e.message).join(", ") };
+    return { ok: true, count: reviews.length };
+  } catch (e: any) {
+    return { ok: false, count: 0, error: e?.message ?? String(e) };
+  }
+}
+
+// review GID から product_ref を引いて、その商品の HTML を再生成 (delete 時用)
+async function regenerateForReview(admin: any, reviewGid: string): Promise<{ ok: boolean; productGid?: string }> {
+  try {
+    const r: any = await admin.graphql(`query R($id:ID!){metaobject(id:$id){fields{key value}}}`, { variables: { id: reviewGid } });
+    const j = await r.json();
+    const fields = j?.data?.metaobject?.fields ?? [];
+    const prodRef = fields.find((f: any) => f.key === "product_ref")?.value;
+    if (!prodRef) return { ok: false };
+    const result = await regenerateProductReviewsHtml(admin, prodRef);
+    return { ok: result.ok, productGid: prodRef };
+  } catch (e) {
+    return { ok: false };
+  }
+}
+
+// ════════════════════════════════════════════════════════════
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
   const formData = await request.formData();
@@ -922,6 +1118,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       resource_id: reviewId, resource_type: "astromeda_review",
       request, metadata: { body_len: newBody.length },
     });
+    // v7: 編集後に該当 product の reviews_html を再生成
+    await regenerateForReview(admin, reviewId);
     return { ok: true, intent, edited: 1 };
   }
 
@@ -1252,6 +1450,47 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     };
   }
 
+  // ─── intent: backfill_reviews_html (全商品の reviews_html を再生成) ───
+  if (intent === "backfill_reviews_html") {
+    // 全 approved review を fetch → product_ref で group → 各 product 再生成
+    const productGroups = new Map<string, number>();
+    let cursor: string | null = null;
+    let safety = 0;
+    while (safety < 50) {
+      const res: any = await admin.graphql(LIST_QUERY, { variables: { first: 250, after: cursor } });
+      const json = await res.json();
+      const edges = json.data?.metaobjects?.edges ?? [];
+      for (const edge of edges) {
+        const fields = edge?.node?.fields ?? [];
+        const status = fields.find((f: any) => f.key === "status")?.value || "pending";
+        if (status !== "approved") continue;
+        const prodRef = fields.find((f: any) => f.key === "product_ref")?.value;
+        if (prodRef) productGroups.set(prodRef, (productGroups.get(prodRef) || 0) + 1);
+      }
+      const pageInfo = json.data?.metaobjects?.pageInfo;
+      if (!pageInfo?.hasNextPage) break;
+      cursor = pageInfo.endCursor;
+      safety++;
+    }
+    let synced = 0, failed = 0;
+    const errors: any[] = [];
+    const productGids = [...productGroups.keys()];
+    const BATCH = 5;
+    for (let i = 0; i < productGids.length; i += BATCH) {
+      const slice = productGids.slice(i, i + BATCH);
+      const results = await Promise.all(slice.map(pg => regenerateProductReviewsHtml(admin, pg)));
+      for (const r of results) {
+        if (r.ok) synced++; else { failed++; errors.push(r.error); }
+      }
+    }
+    await appendAuditLogSafe({
+      admin, actor: session.shop, action: "review.backfill_reviews_html",
+      resource_id: "(bulk)", resource_type: "astromeda_review",
+      request, metadata: { products: productGids.length, synced, failed, total_approved_reviews: [...productGroups.values()].reduce((a,b)=>a+b,0) },
+    });
+    return { ok: failed === 0, intent, products: productGids.length, synced, failed, errors: errors.slice(0, 10) };
+  }
+
   // ─── intent: approve / reject ───
   const idsRaw = formData.get("ids") as string | null;
   const ids = idsRaw ? idsRaw.split(",") : [];
@@ -1293,11 +1532,27 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }),
   );
 
+  // v7: approve/reject 後に対象 product の reviews_html を再生成
+  const productGids = new Set<string>();
+  for (const id of ids) {
+    try {
+      const r: any = await admin.graphql(`query R($id:ID!){metaobject(id:$id){fields{key value}}}`, { variables: { id } });
+      const j = await r.json();
+      const fields = j?.data?.metaobject?.fields ?? [];
+      const prodRef = fields.find((f: any) => f.key === "product_ref")?.value;
+      if (prodRef) productGids.add(prodRef);
+    } catch (e) { /* skip */ }
+  }
+  for (const productGid of productGids) {
+    await regenerateProductReviewsHtml(admin, productGid);
+  }
+
   return {
     ok: updates.every((u) => u.ok),
     updated: updates.filter((u) => u.ok).length,
     failed: updates.filter((u) => !u.ok).length,
     intent,
+    synced_products: productGids.size,
   };
 };
 
@@ -2136,6 +2391,13 @@ export default function ReviewsTab() {
           {fetcher.data?.ok && fetcher.data.intent === "quick_edit_body" ? (
             <Banner tone="success" title="本文を更新しました" onDismiss={() => {}} />
           ) : null}
+          {fetcher.data?.ok && fetcher.data.intent === "backfill_reviews_html" ? (
+            <Banner
+              tone={fetcher.data.failed > 0 ? "warning" : "success"}
+              title={`${fetcher.data.synced} 商品の HTML を再生成しました${fetcher.data.failed ? ` (失敗: ${fetcher.data.failed})` : ""}`}
+              onDismiss={() => {}}
+            />
+          ) : null}
           {fetcher.data?.ok && fetcher.data.intent === "bulk_delete_by_status" ? (
             <Banner
               tone={fetcher.data.failed > 0 ? "warning" : "success"}
@@ -2199,7 +2461,18 @@ export default function ReviewsTab() {
             <BlockStack gap="0">
               <Tabs tabs={tabs} selected={tabIndex < 0 ? 0 : tabIndex} onSelect={handleTabChange} />
               <div style={{ padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, borderBottom: "1px solid #e1e3e5" }}>
-                <div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Button
+                    onClick={() => {
+                      const ok = window.confirm(`全商品の reviews_html (storefront 描画用) を再生成します。\n承認済みレビューが正しくサイトに反映されるようになります。\n(数十秒〜数分かかります)`);
+                      if (!ok) return;
+                      const fd = new FormData();
+                      fd.set("intent", "backfill_reviews_html");
+                      fetcher.submit(fd, { method: "post" });
+                    }}
+                  >
+                    🔄 全商品の HTML を再生成
+                  </Button>
                   {tab === "pending" && tabCounts && tabCounts.pending > 0 ? (
                     <Button
                       tone="critical"
