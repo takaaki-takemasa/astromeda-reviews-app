@@ -136,6 +136,52 @@ const LIST_QUERY = `#graphql
   }
 `;
 
+// LITE: id + updatedAt + fields(key,value のみ。Product reference resolution なし)
+// 1028 件のフル fetch を高速化するために sort/filter/count 用に使う。
+const LIST_QUERY_LITE = `#graphql
+  query ListReviewsLite($first: Int!, $after: String) {
+    metaobjects(type: "astromeda_review", first: $first, after: $after) {
+      edges {
+        node {
+          id
+          updatedAt
+          fields {
+            key
+            value
+          }
+        }
+        cursor
+      }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+`;
+
+// FULL: 表示中のページ (最大 100 件) の ID のみを batch fetch (Product reference 含む)
+const NODES_FULL_QUERY = `#graphql
+  query GetFullReviews($ids: [ID!]!) {
+    nodes(ids: $ids) {
+      ... on Metaobject {
+        id
+        handle
+        updatedAt
+        fields {
+          key
+          value
+          reference {
+            ... on Product {
+              id
+              title
+              handle
+              featuredImage { url altText }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
 const UPDATE_STATUS_MUTATION = `#graphql
   mutation UpdateReviewStatus($id: ID!, $fields: [MetaobjectFieldInput!]!) {
     metaobjectUpdate(id: $id, metaobject: { fields: $fields }) {
@@ -302,19 +348,30 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const PAGE_SIZE = 100;
 
-  // ─── 全件取得 → JS側でステータス別にフィルタ ───
-  // (Shopify metaobjects の query filter が効かないため client-side filter)
-  const allReviews: ReviewItem[] = [];
+  // ─── 2-pass 最適化: 全件 lite fetch → sort/paginate → ページ内 full fetch ───
+  // Pass 1: lite (reference resolution なし) で sort/filter/count に必要な最小フィールドのみ取得
+  type LiteRow = { id: string; status: string; rating: number; posted_at: string; approved_at: string; updatedAt: string };
+  const liteAll: LiteRow[] = [];
   let cursor: string | null = null;
   let safety = 0;
   while (safety < 50) {
-    const res: any = await admin.graphql(LIST_QUERY, {
+    const res: any = await admin.graphql(LIST_QUERY_LITE, {
       variables: { first: 250, after: cursor },
     });
     const json = await res.json();
     const edges = json.data?.metaobjects?.edges ?? [];
     for (const edge of edges) {
-      allReviews.push(extractReview(edge));
+      const node = edge.node;
+      const fields: Array<{key:string; value:string}> = node.fields || [];
+      const fmap = new Map(fields.map((f) => [f.key, f.value]));
+      liteAll.push({
+        id: node.id,
+        status: fmap.get("status") || "pending",
+        rating: Number(fmap.get("rating") || 0),
+        posted_at: fmap.get("posted_at") || "",
+        approved_at: fmap.get("approved_at") || "",
+        updatedAt: node.updatedAt || "",
+      });
     }
     const pageInfo = json.data?.metaobjects?.pageInfo;
     if (!pageInfo?.hasNextPage) break;
@@ -322,17 +379,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     safety++;
   }
 
-  // タブごとに count を計算
+  // タブごとに count を計算 (lite で十分)
   const tabCounts = {
-    pending: allReviews.filter((r) => r.status === "pending").length,
-    approved: allReviews.filter((r) => r.status === "approved").length,
-    rejected: allReviews.filter((r) => r.status === "rejected").length,
+    pending: liteAll.filter((r) => r.status === "pending").length,
+    approved: liteAll.filter((r) => r.status === "approved").length,
+    rejected: liteAll.filter((r) => r.status === "rejected").length,
   };
 
   // 現在の tab で filter
-  const filteredReviews = allReviews.filter((r) => r.status === tab);
+  const filteredLite = liteAll.filter((r) => r.status === tab);
   // ソート: posted_at_desc/asc, rating_desc/asc, approved_at_desc/asc
-  filteredReviews.sort((a, b) => {
+  filteredLite.sort((a, b) => {
     if (sort === "posted_at_desc") {
       const aT = a.posted_at ? new Date(a.posted_at).getTime() : 0;
       const bT = b.posted_at ? new Date(b.posted_at).getTime() : 0;
@@ -357,10 +414,33 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
     return 0;
   });
-  const totalCount = filteredReviews.length;
+  const totalCount = filteredLite.length;
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const startIdx = (currentPage - 1) * PAGE_SIZE;
-  const reviews = filteredReviews.slice(startIdx, startIdx + PAGE_SIZE);
+  const pageLite = filteredLite.slice(startIdx, startIdx + PAGE_SIZE);
+
+  // Pass 2: 表示中のページの ID のみ full fetch (Product reference 解決込み)
+  let reviews: ReviewItem[] = [];
+  if (pageLite.length > 0) {
+    const ids = pageLite.map((r) => r.id);
+    const fullRes: any = await admin.graphql(NODES_FULL_QUERY, {
+      variables: { ids },
+    });
+    const fullJson = await fullRes.json();
+    const fullNodes: any[] = fullJson.data?.nodes ?? [];
+    // id → full node map を作って lite の順序を保持
+    const byId = new Map<string, any>();
+    for (const n of fullNodes) {
+      if (n && n.id) byId.set(n.id, n);
+    }
+    reviews = pageLite
+      .map((lr) => {
+        const fn = byId.get(lr.id);
+        if (!fn) return null;
+        return extractReview({ node: fn });
+      })
+      .filter((x): x is ReviewItem => x !== null);
+  }
 
   // Extract shop slug (strip .myshopify.com) for admin URLs
   const shopFull = (session.shop ?? "").toString();
