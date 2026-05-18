@@ -1122,6 +1122,69 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return { ok: true, created: 1, new_id: newId, intent };
   }
 
+  // ─── intent: bulk_delete_by_status (status 全件削除) ───
+  if (intent === "bulk_delete_by_status") {
+    const targetStatus = (formData.get("status") as string) || "pending";
+    if (!["pending", "approved", "rejected"].includes(targetStatus)) {
+      return { ok: false, error: "invalid status", intent };
+    }
+    // 全件取得 → status filter
+    const targetIds: string[] = [];
+    let cursor: string | null = null;
+    let safety = 0;
+    while (safety < 50) {
+      const res: any = await admin.graphql(LIST_QUERY, {
+        variables: { first: 250, after: cursor },
+      });
+      const json = await res.json();
+      const edges = json.data?.metaobjects?.edges ?? [];
+      for (const edge of edges) {
+        const node = edge?.node;
+        const statusField = node?.fields?.find((f: any) => f?.key === "status");
+        const status = statusField?.value || "pending";
+        if (status === targetStatus) targetIds.push(node.id);
+      }
+      const pageInfo = json.data?.metaobjects?.pageInfo;
+      if (!pageInfo?.hasNextPage) break;
+      cursor = pageInfo.endCursor;
+      safety++;
+    }
+    if (targetIds.length === 0) {
+      return { ok: true, deleted: 0, failed: 0, intent, message: `削除対象 ${targetStatus} は 0 件でした` };
+    }
+    // バッチで削除 (10件ずつ並列)
+    let deleted = 0, failed = 0;
+    const errs: any[] = [];
+    const BATCH = 10;
+    for (let i = 0; i < targetIds.length; i += BATCH) {
+      const slice = targetIds.slice(i, i + BATCH);
+      const results = await Promise.all(slice.map(async (id) => {
+        try {
+          const res = await admin.graphql(DELETE_REVIEW_MUTATION, { variables: { id } });
+          const json = (await res.json()) as any;
+          const eList = json?.data?.metaobjectDelete?.userErrors ?? [];
+          if (eList.length > 0) return { id, ok: false, error: eList.map((e: any) => e.message).join(", ") };
+          return { id, ok: true };
+        } catch (e: any) {
+          return { id, ok: false, error: e?.message ?? String(e) };
+        }
+      }));
+      for (const r of results) {
+        if (r.ok) deleted++; else { failed++; errs.push(r); }
+      }
+    }
+    await appendAuditLogSafe({
+      admin,
+      actor: session.shop,
+      action: "review.bulk_delete_by_status",
+      resource_id: "(bulk)",
+      resource_type: "astromeda_review",
+      request,
+      metadata: { status: targetStatus, deleted, failed, total: targetIds.length },
+    });
+    return { ok: failed === 0, deleted, failed, intent, errors: errs.slice(0, 20) };
+  }
+
   // ─── intent: delete (個別 / 一括 両対応) ───
   if (intent === "delete") {
     const idsRaw = formData.get("ids") as string | null;
@@ -1986,6 +2049,13 @@ export default function ReviewsTab() {
           {fetcher.data?.ok && fetcher.data.updated && fetcher.data.updated > 0 ? (
             <Banner tone="success" title={`${fetcher.data.updated} 件を更新しました`} onDismiss={() => {}} />
           ) : null}
+          {fetcher.data?.ok && fetcher.data.intent === "bulk_delete_by_status" ? (
+            <Banner
+              tone={fetcher.data.failed > 0 ? "warning" : "success"}
+              title={`${fetcher.data.deleted} 件削除しました${fetcher.data.failed ? ` (失敗: ${fetcher.data.failed})` : ""}`}
+              onDismiss={() => {}}
+            />
+          ) : null}
           {fetcher.data?.ok && fetcher.data.intent === "delete" && fetcher.data.deleted ? (
             <Banner tone="success" title={`${fetcher.data.deleted} 件のレビューを完全削除しました`} onDismiss={() => {}} />
           ) : null}
@@ -2041,7 +2111,29 @@ export default function ReviewsTab() {
           <Card>
             <BlockStack gap="0">
               <Tabs tabs={tabs} selected={tabIndex < 0 ? 0 : tabIndex} onSelect={handleTabChange} />
-              <div style={{ padding: "12px 16px", display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, borderBottom: "1px solid #e1e3e5" }}>
+              <div style={{ padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, borderBottom: "1px solid #e1e3e5" }}>
+                <div>
+                  {tab === "pending" && tabCounts && tabCounts.pending > 0 ? (
+                    <Button
+                      tone="critical"
+                      variant="primary"
+                      onClick={() => {
+                        const n = tabCounts.pending;
+                        const ok1 = window.confirm(`承認待ちの ${n} 件をすべて完全削除します。\nこの操作は元に戻せません。続行しますか？`);
+                        if (!ok1) return;
+                        const ok2 = window.confirm(`本当に ${n} 件を削除しますか？\n(誤操作防止のための 2 段階確認)`);
+                        if (!ok2) return;
+                        const fd = new FormData();
+                        fd.set("intent", "bulk_delete_by_status");
+                        fd.set("status", "pending");
+                        fetcher.submit(fd, { method: "post" });
+                      }}
+                    >
+                      承認待ちを全削除 ({tabCounts.pending})
+                    </Button>
+                  ) : null}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 13, color: "#616161" }}>並び替え:</span>
                 <div style={{ minWidth: 220 }}>
                   <Select
@@ -2051,6 +2143,7 @@ export default function ReviewsTab() {
                     value={sort}
                     onChange={handleSortChange}
                   />
+                </div>
                 </div>
               </div>
               {reviews.length === 0 ? (
