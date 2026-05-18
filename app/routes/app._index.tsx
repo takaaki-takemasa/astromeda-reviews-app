@@ -87,6 +87,17 @@ export default function HomeDashboard() {
           <Layout.Section variant="oneThird">
             <Card>
               <BlockStack gap="200">
+                <Text as="h3" variant="headingMd">📧 レビュー未送信リスト</Text>
+                <Text as="p" variant="bodyMd">
+                  発送済み商品×お客様で 🔴未依頼 / 🟡依頼済 / 🟢レビュー済 を可視化。「📧 今すぐ依頼」で個別送信
+                </Text>
+                <Link to="/app/shipments">レビュー未送信リストを開く →</Link>
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+          <Layout.Section variant="oneThird">
+            <Card>
+              <BlockStack gap="200">
                 <Text as="h3" variant="headingMd">メール設定</Text>
                 <Text as="p" variant="bodyMd">
                   IP / カテゴリ別の依頼メール文面を編集
