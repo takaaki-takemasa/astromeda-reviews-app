@@ -35,6 +35,33 @@ const COUPONS_QUERY = `#graphql
   }
 `;
 
+const SHOPIFY_DISCOUNTS_QUERY = `#graphql
+  query ListShopifyDiscounts {
+    codeDiscountNodes(first: 50, query: "status:ACTIVE OR status:SCHEDULED") {
+      edges {
+        node {
+          id
+          codeDiscount {
+            ... on DiscountCodeBasic {
+              title
+              status
+              startsAt
+              endsAt
+              codes(first: 1) { edges { node { code } } }
+              customerGets {
+                value {
+                  ... on DiscountPercentage { percentage }
+                  ... on DiscountAmount { amount { amount } }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
 function fieldsToMap(fields: Array<{key: string; value: string}>): Record<string, string> {
   const m: Record<string, string> = {};
   for (const f of fields) m[f.key] = f.value;
@@ -70,7 +97,33 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const totalUsed = coupons.filter((c) => c.used_at).length;
   const usageRate = totalIssued > 0 ? Math.round((totalUsed / totalIssued) * 100) : 0;
 
-  return { settings, coupons, stats: { totalIssued, totalUsed, usageRate } };
+  // 4) Shopify Discount list (連携選択肢)
+  let shopifyDiscounts: any[] = [];
+  try {
+    const dres: any = await admin.graphql(SHOPIFY_DISCOUNTS_QUERY);
+    const dj = await dres.json();
+    const edges = dj?.data?.codeDiscountNodes?.edges ?? [];
+    shopifyDiscounts = edges.map((e: any) => {
+      const n = e.node;
+      const d = n.codeDiscount || {};
+      const valObj = d.customerGets?.value || {};
+      let label = "";
+      if (valObj.percentage != null) label = `${Math.round(valObj.percentage * 100)}% OFF`;
+      else if (valObj.amount?.amount) label = `¥${valObj.amount.amount} OFF`;
+      const sampleCode = d.codes?.edges?.[0]?.node?.code || "";
+      return {
+        id: n.id,
+        title: d.title || sampleCode || "(無題)",
+        status: d.status || "",
+        startsAt: d.startsAt || "",
+        endsAt: d.endsAt || "",
+        sampleCode,
+        label,
+      };
+    });
+  } catch (e) { /* skip */ }
+
+  return { settings, coupons, stats: { totalIssued, totalUsed, usageRate }, shopifyDiscounts };
 };
 
 // ──────────────────────────────────────────────────────────────────
@@ -146,6 +199,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             { key: "applicable_to", value: String(fd.get("applicable_to") || "same_ip") },
             { key: "email_pitch", value: String(fd.get("email_pitch") || "") },
             { key: "minimum_purchase", value: String(fd.get("minimum_purchase") || "0") },
+            { key: "shopify_discount_gid", value: String(fd.get("shopify_discount_gid") || "") },
           ],
         },
       },
@@ -386,7 +440,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 // UI
 // ──────────────────────────────────────────────────────────────────
 export default function IncentiveTab() {
-  const { settings, coupons, stats } = useLoaderData<typeof loader>();
+  const { settings, coupons, stats, shopifyDiscounts } = useLoaderData<typeof loader>();
   const [searchParams, setSearchParams] = useSearchParams();
   const fetcher = useFetcher<typeof action>();
   const [tabIdx, setTabIdx] = useState(parseInt(searchParams.get("tab") || "0", 10));
@@ -400,6 +454,7 @@ export default function IncentiveTab() {
   const [appTo, setAppTo] = useState(settings.applicable_to || "same_ip");
   const [pitch, setPitch] = useState(settings.email_pitch || "");
   const [minPurchase, setMinPurchase] = useState(settings.minimum_purchase || "0");
+  const [shopifyDiscountGid, setShopifyDiscountGid] = useState(settings.shopify_discount_gid || "");
 
   // Test send form state
   const [testName, setTestName] = useState("武正貴昭");
@@ -416,6 +471,7 @@ export default function IncentiveTab() {
     fd.set("applicable_to", appTo);
     fd.set("email_pitch", pitch);
     fd.set("minimum_purchase", minPurchase);
+    fd.set("shopify_discount_gid", shopifyDiscountGid);
     fetcher.submit(fd, { method: "post" });
   }, [enabled, dtype, dvalue, vdays, appTo, pitch, minPurchase, fetcher]);
 
@@ -494,12 +550,18 @@ export default function IncentiveTab() {
             </Card>
           </Layout.Section>
 
-          {/* ============ Settings Tab ============ */}
+          {/* ============ Settings Tab (Shopify ディスカウント連携版) ============ */}
           {tabIdx === 0 ? (
             <Layout.Section>
               <Card>
                 <BlockStack gap="400">
                   <Text as="h2" variant="headingLg">クーポン設定</Text>
+                  <Banner tone="info">
+                    <BlockStack gap="100">
+                      <Text as="p" variant="bodyMd" fontWeight="semibold">Shopify ディスカウント管理と連携しています</Text>
+                      <Text as="p" variant="bodyMd">割引率・期間・対象範囲などの設定は <strong>Shopify 管理画面 → ディスカウント</strong> で行います。ここではどのディスカウントを連携するかを選ぶだけです。</Text>
+                    </BlockStack>
+                  </Banner>
                   <FormLayout>
                     <ChoiceList
                       title="インセンティブ機能"
@@ -507,21 +569,35 @@ export default function IncentiveTab() {
                       selected={[enabled ? "on" : "off"]}
                       onChange={(v) => setEnabled(v[0] === "on")}
                     />
-                    <FormLayout.Group>
-                      <Select label="割引タイプ" options={[{ label: "割引率 (%)", value: "percentage" }, { label: "固定額 (円)", value: "fixed_amount" }]} value={dtype} onChange={setDtype} />
-                      <TextField label={dtype === "percentage" ? "割引率 (%)" : "固定額 (円)"} type="number" value={dvalue} onChange={setDvalue} autoComplete="off" />
-                    </FormLayout.Group>
-                    <FormLayout.Group>
-                      <Select label="有効期限" options={[{ label: "30日", value: "30" }, { label: "60日", value: "60" }, { label: "90日", value: "90" }, { label: "180日", value: "180" }, { label: "365日", value: "365" }]} value={vdays} onChange={setVdays} />
-                      <Select label="対象範囲" options={[
-                        { label: "すべての商品", value: "all" },
-                        { label: "同IPコラボの商品 (推奨)", value: "same_ip" },
-                        { label: "同カテゴリ", value: "category" },
-                        { label: "同商品のみ", value: "product" },
-                      ]} value={appTo} onChange={setAppTo} />
-                    </FormLayout.Group>
-                    <TextField label="最低購入金額 (円)" type="number" value={minPurchase} onChange={setMinPurchase} helpText="0=制限なし" autoComplete="off" />
-                    <TextField label="依頼メール訴求文" value={pitch} onChange={setPitch} multiline={3} helpText="依頼メール本文に挿入される一行。例: レビュー投稿で次回 10% OFF プレゼント 🎁" autoComplete="off" />
+                    <Select
+                      label="連携する Shopify ディスカウント"
+                      options={[{ label: "— 連携なし (個別に新規発行)", value: "" }, ...((shopifyDiscounts || []) as any[]).map((d: any) => ({ label: `${d.title} (${d.label || d.status})`, value: d.id }))]}
+                      value={shopifyDiscountGid}
+                      onChange={setShopifyDiscountGid}
+                      helpText="承認時にこのディスカウント配下に固有コードを追加します。設定変更は Shopify 管理画面で。"
+                    />
+                    {(() => {
+                      const sel = (shopifyDiscounts || []).find((d: any) => d.id === shopifyDiscountGid);
+                      if (!sel) return null;
+                      const adminUrl = `/admin/discounts/${sel.id.replace("gid://shopify/DiscountCodeNode/", "")}`;
+                      return (
+                        <Banner tone="success">
+                          <BlockStack gap="100">
+                            <Text as="p" variant="bodyMd" fontWeight="semibold">{sel.title}</Text>
+                            <Text as="p" variant="bodyMd">割引: <Badge tone="success">{sel.label}</Badge> 状態: <Badge>{sel.status}</Badge></Text>
+                            {sel.endsAt ? <Text as="p" variant="bodyMd">期限: {sel.endsAt.slice(0, 10)} まで</Text> : null}
+                            <InlineStack gap="200">
+                              <Button url={adminUrl} target="_top">🔗 Shopify でこのディスカウントを編集</Button>
+                            </InlineStack>
+                          </BlockStack>
+                        </Banner>
+                      );
+                    })()}
+                    <InlineStack gap="200">
+                      <Button url="/admin/discounts/new" target="_top" variant="secondary">+ Shopify で新規ディスカウントを作成</Button>
+                    </InlineStack>
+                    <Divider />
+                    <TextField label="依頼メール訴求文" value={pitch} onChange={setPitch} multiline={3} helpText="例: レビュー投稿で次回 10% OFF プレゼント 🎁。Shopify ディスカウント側で変更したら手動で更新してください。" autoComplete="off" />
                     <InlineStack gap="200">
                       <Button variant="primary" tone="success" onClick={saveSettings} loading={fetcher.state !== "idle"}>💾 設定を保存</Button>
                     </InlineStack>
