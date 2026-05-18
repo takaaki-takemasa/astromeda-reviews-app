@@ -609,38 +609,34 @@ function renderReviewsContainerHtml(reviews: any[], productTitle: string): strin
 }
 
 async function fetchProductApprovedReviewsForProduct(admin: any, productGid: string): Promise<any[]> {
-  // 全 metaobjects を fetch して product_ref で filter (250 単位ページネーション)
+  // v9: LIST_QUERY_LITE で Product reference resolution を回避 (1028件 fetch を高速化)
+  // 既に LIST_QUERY_LITE には product_ref の value (GID 文字列) が含まれているので、
+  // string 比較だけで対象 review を絞り込める。photos は metafield に書き込まないので省略 (現状仕様)。
   const approved: any[] = [];
   let cursor: string | null = null;
   let safety = 0;
   while (safety < 50) {
-    const res: any = await admin.graphql(LIST_QUERY, { variables: { first: 250, after: cursor } });
+    const res: any = await admin.graphql(LIST_QUERY_LITE, { variables: { first: 250, after: cursor } });
     const json = await res.json();
     const edges = json.data?.metaobjects?.edges ?? [];
     for (const edge of edges) {
       const node = edge?.node;
       const fields = node?.fields ?? [];
-      const fmap: any = {};
-      for (const f of fields) fmap[f.key] = f;
-      const status = fmap.status?.value || "pending";
-      const prodRefRaw = fmap.product_ref?.value || "";
+      const fmap: Record<string,string> = {};
+      for (const f of fields) fmap[f.key] = f.value;
+      const status = fmap.status || "pending";
+      const prodRefRaw = fmap.product_ref || "";
       if (status !== "approved") continue;
       if (prodRefRaw !== productGid) continue;
-      const photos: any[] = [];
-      for (let i = 1; i <= 6; i++) {
-        const pk = "photo_" + i;
-        const ref = fmap[pk]?.reference;
-        if (ref && ref.image && ref.image.url) photos.push({ url: ref.image.url });
-      }
       approved.push({
         id: node.id,
-        rating: fmap.rating?.value || "5",
-        title: fmap.title?.value || "",
-        body: fmap.body?.value || "",
-        reviewer_name: fmap.reviewer_name?.value || "",
-        source_type: fmap.source_type?.value || "",
-        posted_at: fmap.posted_at?.value || "",
-        photos,
+        rating: fmap.rating || "5",
+        title: fmap.title || "",
+        body: fmap.body || "",
+        reviewer_name: fmap.reviewer_name || "",
+        source_type: fmap.source_type || "",
+        posted_at: fmap.posted_at || "",
+        photos: [],
       });
     }
     const pageInfo = json.data?.metaobjects?.pageInfo;
