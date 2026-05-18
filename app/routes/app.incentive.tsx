@@ -69,7 +69,7 @@ function fieldsToMap(fields: Array<{key: string; value: string}>): Record<string
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
 
   // 1) Settings
   let settings: any = { enabled: true, discount_type: "percentage", discount_value: "10", validity_days: "90", applicable_to: "same_ip", email_pitch: "", minimum_purchase: "0" };
@@ -99,9 +99,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   // 4) Shopify Discount list (連携選択肢)
   let shopifyDiscounts: any[] = [];
+  let discountFetchError: string | null = null;
   try {
     const dres: any = await admin.graphql(SHOPIFY_DISCOUNTS_QUERY);
     const dj = await dres.json();
+    if (dj?.errors && dj.errors.length > 0) {
+      discountFetchError = dj.errors.map((er: any) => er.message).join("; ");
+    }
     const edges = dj?.data?.codeDiscountNodes?.edges ?? [];
     shopifyDiscounts = edges
       .filter((e: any) => {
@@ -126,9 +130,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         label,
       };
     });
-  } catch (e) { /* skip */ }
+  } catch (e: any) {
+    discountFetchError = String(e?.message || e || "unknown");
+  }
 
-  return { settings, coupons, stats: { totalIssued, totalUsed, usageRate }, shopifyDiscounts };
+  // shop handle for absolute Shopify admin deep-links inside iframe
+  const shopHandle = (session?.shop || "").replace(".myshopify.com", "");
+
+  return { settings, coupons, stats: { totalIssued, totalUsed, usageRate }, shopifyDiscounts, discountFetchError, shopHandle };
 };
 
 // ──────────────────────────────────────────────────────────────────
@@ -445,7 +454,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 // UI
 // ──────────────────────────────────────────────────────────────────
 export default function IncentiveTab() {
-  const { settings, coupons, stats, shopifyDiscounts } = useLoaderData<typeof loader>();
+  const { settings, coupons, stats, shopifyDiscounts, discountFetchError, shopHandle } = useLoaderData<typeof loader>() as any;
   const [searchParams, setSearchParams] = useSearchParams();
   const fetcher = useFetcher<typeof action>();
   const [tabIdx, setTabIdx] = useState(parseInt(searchParams.get("tab") || "0", 10));
@@ -574,6 +583,21 @@ export default function IncentiveTab() {
                       selected={[enabled ? "on" : "off"]}
                       onChange={(v) => setEnabled(v[0] === "on")}
                     />
+                    {discountFetchError ? (
+                      <Banner tone="critical">
+                        <BlockStack gap="100">
+                          <Text as="p" variant="bodyMd" fontWeight="semibold">⚠️ Shopify ディスカウントの読み込みに失敗しました</Text>
+                          <Text as="p" variant="bodyMd">原因の可能性: アプリの権限に <strong>read_discounts</strong> がまだ付与されていません。Partner Dashboard で新しいアプリバージョンをリリースし、Shopify admin で「アプリの権限を更新」してください。エラー詳細: {String(discountFetchError).slice(0, 200)}</Text>
+                        </BlockStack>
+                      </Banner>
+                    ) : (shopifyDiscounts || []).length === 0 ? (
+                      <Banner tone="warning">
+                        <BlockStack gap="100">
+                          <Text as="p" variant="bodyMd" fontWeight="semibold">📭 連携可能なディスカウントが見つかりません</Text>
+                          <Text as="p" variant="bodyMd">Shopify 管理画面で ACTIVE / SCHEDULED 状態の Discount Code を作成すると、ここに表示されます。</Text>
+                        </BlockStack>
+                      </Banner>
+                    ) : null}
                     <Select
                       label="連携する Shopify ディスカウント"
                       options={[{ label: "— 連携なし (個別に新規発行)", value: "" }, ...((shopifyDiscounts || []) as any[]).map((d: any) => ({ label: `${d.title} (${d.label || d.status})`, value: d.id }))]}
@@ -584,7 +608,7 @@ export default function IncentiveTab() {
                     {(() => {
                       const sel = (shopifyDiscounts || []).find((d: any) => d.id === shopifyDiscountGid);
                       if (!sel) return null;
-                      const adminUrl = `/admin/discounts/${sel.id.replace("gid://shopify/DiscountCodeNode/", "")}`;
+                      // adminUrl now computed inline with shopHandle
                       return (
                         <Banner tone="success">
                           <BlockStack gap="100">
@@ -592,14 +616,14 @@ export default function IncentiveTab() {
                             <Text as="p" variant="bodyMd">割引: <Badge tone="success">{sel.label}</Badge> 状態: <Badge>{sel.status}</Badge></Text>
                             {sel.endsAt ? <Text as="p" variant="bodyMd">期限: {sel.endsAt.slice(0, 10)} まで</Text> : null}
                             <InlineStack gap="200">
-                              <Button url={adminUrl} target="_top">🔗 Shopify でこのディスカウントを編集</Button>
+                              <Button url={`https://admin.shopify.com/store/${shopHandle}/discounts/${sel.id.replace("gid://shopify/DiscountCodeNode/", "")}`} target="_top" external>🔗 Shopify でこのディスカウントを編集</Button>
                             </InlineStack>
                           </BlockStack>
                         </Banner>
                       );
                     })()}
                     <InlineStack gap="200">
-                      <Button url="/admin/discounts/new" target="_top" variant="secondary">+ Shopify で新規ディスカウントを作成</Button>
+                      <Button url={`https://admin.shopify.com/store/${shopHandle}/discounts/new`} target="_top" variant="secondary" external>+ Shopify で新規ディスカウントを作成</Button>
                     </InlineStack>
                     <Divider />
                     <TextField label="依頼メール訴求文" value={pitch} onChange={setPitch} multiline={3} helpText="例: レビュー投稿で次回 10% OFF プレゼント 🎁。Shopify ディスカウント側で変更したら手動で更新してください。" autoComplete="off" />
