@@ -28,6 +28,7 @@ export default function App() {
           口コミ管理
         </Link>
         <Link to="/app/reviews">レビュー一覧</Link>
+        <Link to="/app/shipments">レビュー未送信リスト</Link>
         <Link to="/app/email">メール設定</Link>
         <Link to="/app/tokens">ギフトトークン</Link>
         <Link to="/app/queue">送信キュー</Link>
