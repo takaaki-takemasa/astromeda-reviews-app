@@ -571,6 +571,9 @@ export default function IncentiveTab() {
                 <BlockStack gap="400">
                   <Text as="h2" variant="headingLg">クーポン設定</Text>
                   <Banner tone="info">
+                    <Text as="p" variant="bodyMd">🔍 DEBUG: discounts_count=<strong>{(shopifyDiscounts || []).length}</strong> / fetch_error=<strong>{discountFetchError ? "YES" : "none"}</strong> / shop=<strong>{shopHandle || "?"}</strong></Text>
+                  </Banner>
+                  <Banner tone="info">
                     <BlockStack gap="100">
                       <Text as="p" variant="bodyMd" fontWeight="semibold">Shopify ディスカウント管理と連携しています</Text>
                       <Text as="p" variant="bodyMd">割引率・期間・対象範囲などの設定は <strong>Shopify 管理画面 → ディスカウント</strong> で行います。ここではどのディスカウントを連携するかを選ぶだけです。</Text>
