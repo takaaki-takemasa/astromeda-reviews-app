@@ -587,13 +587,35 @@ async function fetchProductTitle(admin: any, productGid: string): Promise<string
   }
 }
 
-async function regenerateProductReviewsHtml(admin: any, productGid: string): Promise<{ ok: boolean; count: number; error?: string }> {
+// v8: 既存 metafield 取得用 query
+const PRODUCT_REVIEWS_HTML_QUERY = `#graphql
+  query GetReviewsHtml($id: ID!) {
+    product(id: $id) {
+      title
+      metafield(namespace: "astromeda", key: "reviews_html") { value }
+    }
+  }
+`;
+
+async function regenerateProductReviewsHtml(admin: any, productGid: string): Promise<{ ok: boolean; count: number; skipped?: boolean; error?: string }> {
   try {
     if (!productGid || !productGid.startsWith("gid://shopify/Product/")) return { ok: false, count: 0, error: "invalid product gid" };
+    // 既存 HTML + title を 1 回の query で取得
+    let existingHtml = "";
+    let productTitle = "";
+    try {
+      const pres: any = await admin.graphql(PRODUCT_REVIEWS_HTML_QUERY, { variables: { id: productGid } });
+      const pjson = await pres.json();
+      productTitle = pjson?.data?.product?.title || "";
+      existingHtml = pjson?.data?.product?.metafield?.value || "";
+    } catch (e) { /* skip */ }
     const reviews = await fetchProductApprovedReviewsForProduct(admin, productGid);
-    const productTitle = await fetchProductTitle(admin, productGid);
     const html = renderReviewsContainerHtml(reviews, productTitle);
-    // metafield に保存 (空 HTML でも上書きして古い HTML を消す)
+    const valueToWrite = html || "(no reviews)";
+    // v8: 既存と同じなら write skip (API call 削減)
+    if (existingHtml === valueToWrite) {
+      return { ok: true, count: reviews.length, skipped: true };
+    }
     const res: any = await admin.graphql(PRODUCT_METAFIELD_SET, {
       variables: {
         metafields: [{
@@ -601,14 +623,14 @@ async function regenerateProductReviewsHtml(admin: any, productGid: string): Pro
           namespace: "astromeda",
           key: "reviews_html",
           type: "multi_line_text_field",
-          value: html || "(no reviews)",
+          value: valueToWrite,
         }],
       },
     });
     const json = await res.json();
     const errs = json?.data?.metafieldsSet?.userErrors ?? [];
     if (errs.length > 0) return { ok: false, count: reviews.length, error: errs.map((e: any) => e.message).join(", ") };
-    return { ok: true, count: reviews.length };
+    return { ok: true, count: reviews.length, skipped: false };
   } catch (e: any) {
     return { ok: false, count: 0, error: e?.message ?? String(e) };
   }
