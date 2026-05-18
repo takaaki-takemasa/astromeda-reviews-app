@@ -30,6 +30,7 @@ import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
 import { useLoaderData, useFetcher, useSearchParams } from "@remix-run/react";
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { authenticate } from "../shopify.server";
+import { issueCouponForReview } from "../lib/issue-coupon";
 import { appendAuditLogSafe } from "../lib/audit-log";
 
 // Vercel Pro: 60 秒まで。チャンク 1 つあたり 30 行 × 500ms ≈ 15-20 秒で完走想定だが安全マージンとして明示
@@ -1856,7 +1857,31 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (!result.ok) console.error("[ACTION] regenerate FAIL", { productGid, result });
     else console.log("[ACTION] regenerate result", { productGid, ok: result.ok, count: result.count, skipped: result.skipped });
   }
-  console.log("[ACTION] maintenance phase complete", { productsProcessed: productGids.size });
+  // 4. Phase 2.4: approve 時にクーポン自動発行 + サンクスメール送信
+  let couponsIssued = 0;
+  let couponsFailed = 0;
+  if (intent === "approve") {
+    console.log("[ACTION] coupon issuance phase start", { reviewIds: ids.length });
+    for (const reviewId of ids) {
+      try {
+        const cres = await issueCouponForReview(admin, reviewId);
+        if (cres.ok) {
+          couponsIssued++;
+          console.log("[ACTION] coupon issued", { reviewId, code: cres.code, emailSent: cres.emailSent, shopifyDiscount: !!cres.shopifyDiscountId });
+        } else if (cres.skipped) {
+          console.log("[ACTION] coupon skipped", { reviewId, reason: cres.skipped });
+        } else {
+          couponsFailed++;
+          console.error("[ACTION] coupon issue FAIL", { reviewId, error: cres.error });
+        }
+      } catch (e: any) {
+        couponsFailed++;
+        console.error("[ACTION] coupon issue EXCEPTION", { reviewId, error: e?.message });
+      }
+    }
+    console.log("[ACTION] coupon issuance phase complete", { issued: couponsIssued, failed: couponsFailed });
+  }
+  console.log("[ACTION] maintenance phase complete", { productsProcessed: productGids.size, couponsIssued, couponsFailed });
 
   return {
     ok: updates.every((u) => u.ok),
@@ -1864,6 +1889,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     failed: updates.filter((u) => !u.ok).length,
     intent,
     synced_products: productGids.size,
+    coupons_issued: couponsIssued,
+    coupons_failed: couponsFailed,
   };
 };
 
