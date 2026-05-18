@@ -13,6 +13,7 @@ import { useLoaderData, useFetcher, useSearchParams } from "@remix-run/react";
 import { useState, useCallback, useEffect } from "react";
 import { authenticate } from "../shopify.server";
 import { appendAuditLogSafe } from "../lib/audit-log";
+import { sendReviewRequestEmail } from "../lib/resend-email";
 
 // ──────────────────────────────────────────────────────────────────
 // Loader
@@ -156,8 +157,50 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return { ok: true, intent };
   }
 
-  // ----- Test Send (仮顧客にレビュー依頼+クーポンメール送信) -----
+  // ----- Test Send (仮顧客にレビュー依頼メールを Resend で送信) -----
   if (intent === "test_send") {
+    const name = String(fd.get("name") || "");
+    const email = String(fd.get("email") || "");
+    const productGid = String(fd.get("product_gid") || "");
+    if (!name || !email) return { ok: false, intent, error: "name と email は必須" };
+
+    // 商品タイトル取得 (read_products は scope 既存)
+    let productTitle = "テスト商品";
+    if (productGid) {
+      try {
+        const pres: any = await admin.graphql(`query P($id: ID!) { product(id: $id) { title } }`, { variables: { id: productGid } });
+        const pj = await pres.json();
+        productTitle = pj?.data?.product?.title || productTitle;
+      } catch (_) { /* skip */ }
+    }
+
+    // 訴求文 (設定から取得)
+    let couponPitch = "レビュー投稿で次回 10% OFF クーポンをプレゼント 🎁";
+    try {
+      const sres: any = await admin.graphql(SETTINGS_QUERY);
+      const sj = await sres.json();
+      const settingsNode = sj?.data?.metaobjectByHandle;
+      if (settingsNode) {
+        const s = fieldsToMap(settingsNode.fields);
+        if (s.email_pitch && s.email_pitch.trim()) couponPitch = s.email_pitch.trim();
+      }
+    } catch (_) { /* skip */ }
+
+    const token = "TEST-" + Math.random().toString(36).slice(2, 10).toUpperCase();
+    const STORE_DOMAIN = process.env.SHOP_CUSTOM_DOMAIN || "shop.mining-base.co.jp";
+    const reviewUrl = `https://${STORE_DOMAIN}/apps/reviews-1/submit?token=${token}`;
+
+    const result = await sendReviewRequestEmail({ to: email, customerName: name, productTitle, reviewUrl, couponPitch });
+    if (!result.ok) {
+      console.error("[test_send] resend FAIL", result.error);
+      return { ok: false, intent, error: `Resend 送信失敗: ${result.error}` };
+    }
+    await appendAuditLogSafe({ admin, actor: session.shop, action: "incentive.test_send", resource_id: result.id || "(no-id)", resource_type: "ResendEmail", request, metadata: { name, email, productGid, productTitle, token, reviewUrl, resend_id: result.id } });
+    return { ok: true, intent, reviewUrl, token, resend_id: result.id };
+  }
+
+  // ----- (旧 Draft Order Invoice 経由は廃止。以下未使用ブロック)
+  if (intent === "DEPRECATED_test_send_draft_order") {
     const name = String(fd.get("name") || "");
     const email = String(fd.get("email") || "");
     const productGid = String(fd.get("product_gid") || "");
@@ -396,7 +439,7 @@ export default function IncentiveTab() {
     if (fetcher.state === "idle" && fetcher.data?.ok && !toast) {
       const intent = fetcher.data.intent;
       if (intent === "save_settings") setToast("設定を保存しました");
-      else if (intent === "test_send") setToast(`テスト送信完了: ${(fetcher.data as any).draftOrderName} → ${testEmail}`);
+      else if (intent === "test_send") setToast(`テスト送信完了: ${testEmail} (Resend ID: ${(fetcher.data as any).resend_id?.slice(0,8) || "?"})`);
       else if (intent === "health_check") setToast(`ヘルスチェック完了: ${(fetcher.data as any).summary?.ok}/${(fetcher.data as any).summary?.total} 正常`);
       setTimeout(() => setToast(null), 4500);
     } else if (fetcher.state === "idle" && fetcher.data && fetcher.data.ok === false) {
@@ -536,7 +579,7 @@ export default function IncentiveTab() {
                   <Text as="h2" variant="headingLg">🧪 仮顧客にレビュー依頼メールを送信</Text>
                   <Banner tone="info">
                     <Text as="p" variant="bodyMd">
-                      仮の顧客 + Draft Order (¥0) を作成し、Shopify 経由でレビュー依頼メールを実送信します。CEO 自身のメールでフルループを検証できます。
+                      Resend transactional email でレビュー依頼メールを実送信します。CEO 自身のメールでフルループを検証できます。
                     </Text>
                   </Banner>
                   <FormLayout>
@@ -553,7 +596,7 @@ export default function IncentiveTab() {
                     <Banner tone="success">
                       <BlockStack gap="100">
                         <Text as="p" variant="bodyMd"><strong>送信完了!</strong></Text>
-                        <Text as="p" variant="bodyMd">Draft Order: {(fetcher.data as any).draftOrderName}</Text>
+                        <Text as="p" variant="bodyMd">Resend ID: <code>{(fetcher.data as any).resend_id}</code></Text>
                         <Text as="p" variant="bodyMd">レビュー URL: <code>{(fetcher.data as any).reviewUrl}</code></Text>
                       </BlockStack>
                     </Banner>
