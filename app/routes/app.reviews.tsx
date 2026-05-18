@@ -899,7 +899,31 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   // ─── intent: edit (admin edits existing review fields) ───
-  if (intent === "edit") {
+  if (intent === "quick_edit_body") {
+    const reviewId = String(formData.get("reviewId") || "");
+    const newBody = String(formData.get("body") || "").trim().slice(0, 1000);
+    if (!reviewId.startsWith("gid://shopify/Metaobject/")) return { ok: false, error: "review id が不正です", intent };
+    if (newBody.length < 1) return { ok: false, error: "本文が空です", intent };
+    // title 再生成 (body の先頭から)
+    const _bodyForTitle = newBody.split("──── 日本語訳 ────")[0];
+    const newTitle = _bodyForTitle.replace(/[\r\n]+/g, " ").trim().slice(0, 100) || "(タイトルなし)";
+    const fields = [
+      { key: "body", value: newBody },
+      { key: "title", value: newTitle },
+    ];
+    const r = await admin.graphql(EDIT_REVIEW_MUTATION, { variables: { id: reviewId, fields } });
+    const j = (await r.json()) as { data?: { metaobjectUpdate?: { userErrors: Array<{ message: string }> } } };
+    const errs = j.data?.metaobjectUpdate?.userErrors ?? [];
+    if (errs.length > 0) return { ok: false, error: `保存失敗: ${errs.map((e) => e.message).join(", ")}`, intent };
+    await appendAuditLogSafe({
+      admin, actor: session.shop, action: "review.quick_edit_body",
+      resource_id: reviewId, resource_type: "astromeda_review",
+      request, metadata: { body_len: newBody.length },
+    });
+    return { ok: true, intent, edited: 1 };
+  }
+
+    if (intent === "edit") {
     const reviewId = String(formData.get("reviewId") || "");
     if (!reviewId.startsWith("gid://shopify/Metaobject/")) {
       return { ok: false, error: "review id が不正です", intent };
@@ -1713,6 +1737,8 @@ export default function ReviewsTab() {
   const [editRating, setEditRating] = useState("5");
   const [editTitle, setEditTitle] = useState("");
   const [editBody, setEditBody] = useState("");
+  const [inlineEditId, setInlineEditId] = useState<string | null>(null);
+  const [inlineEditBody, setInlineEditBody] = useState<string>("");
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [photoUrlInputs, setPhotoUrlInputs] = useState<Record<number, string>>({});
@@ -1992,8 +2018,63 @@ export default function ReviewsTab() {
       <IndexTable.Cell>
         {(() => {
           const { original, translation } = splitTranslation(r.body);
+          const isEditing = inlineEditId === r.id;
+          if (isEditing) {
+            return (
+              <div style={{ maxWidth: 400 }} onClick={(e) => e.stopPropagation()}>
+                <textarea
+                  value={inlineEditBody}
+                  onChange={(e) => setInlineEditBody(e.target.value)}
+                  rows={5}
+                  style={{ width: "100%", padding: 8, border: "2px solid #2563eb", borderRadius: 6, fontSize: 13, fontFamily: "inherit", lineHeight: 1.5, resize: "vertical" }}
+                  autoFocus
+                />
+                <div style={{ marginTop: 6, display: "flex", gap: 6, fontSize: 11, color: "#6b7280" }}>
+                  <span>{inlineEditBody.length} 文字 / 1000 文字</span>
+                </div>
+                <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const fd = new FormData();
+                      fd.set("intent", "quick_edit_body");
+                      fd.set("reviewId", r.id);
+                      fd.set("body", inlineEditBody);
+                      fetcher.submit(fd, { method: "post" });
+                      setInlineEditId(null);
+                    }}
+                    style={{ padding: "6px 12px", background: "#10b981", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontWeight: 600, fontSize: 12 }}
+                  >
+                    ✓ 保存
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setInlineEditId(null);
+                      setInlineEditBody("");
+                    }}
+                    style={{ padding: "6px 12px", background: "#fff", color: "#6b7280", border: "1px solid #d1d5db", borderRadius: 4, cursor: "pointer", fontSize: 12 }}
+                  >
+                    キャンセル
+                  </button>
+                </div>
+              </div>
+            );
+          }
           return (
-            <div style={{ fontSize: 13, color: "#374151", lineHeight: 1.5, whiteSpace: "normal", wordBreak: "break-word", maxWidth: 400 }}>
+            <div
+              style={{ fontSize: 13, color: "#374151", lineHeight: 1.5, whiteSpace: "normal", wordBreak: "break-word", maxWidth: 400, cursor: "pointer", padding: 6, borderRadius: 4, position: "relative" }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setInlineEditId(r.id);
+                setInlineEditBody(r.body);
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "#f9fafb"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+              title="クリックして編集"
+            >
               <div>{original}</div>
               {translation ? (
                 <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1px dashed #d1d5db", fontSize: 12, color: "#6b7280" }}>
@@ -2001,6 +2082,7 @@ export default function ReviewsTab() {
                   {translation}
                 </div>
               ) : null}
+              <span style={{ position: "absolute", top: 4, right: 4, fontSize: 10, color: "#9ca3af", opacity: 0.6 }}>✏️ 編集</span>
             </div>
           );
         })()}
@@ -2048,6 +2130,9 @@ export default function ReviewsTab() {
         <Layout.Section>
           {fetcher.data?.ok && fetcher.data.updated && fetcher.data.updated > 0 ? (
             <Banner tone="success" title={`${fetcher.data.updated} 件を更新しました`} onDismiss={() => {}} />
+          ) : null}
+          {fetcher.data?.ok && fetcher.data.intent === "quick_edit_body" ? (
+            <Banner tone="success" title="本文を更新しました" onDismiss={() => {}} />
           ) : null}
           {fetcher.data?.ok && fetcher.data.intent === "bulk_delete_by_status" ? (
             <Banner
