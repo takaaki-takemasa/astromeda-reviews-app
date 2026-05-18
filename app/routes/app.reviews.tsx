@@ -2486,8 +2486,7 @@ export default function ReviewsTab() {
                 <div style={{ display: "flex", gap: 8 }}>
                   <Button
                     onClick={() => {
-                      const ok = window.confirm(`全商品の reviews_html (storefront 描画用) を再生成します。\n承認済みレビューが正しくサイトに反映されるようになります。\n(数十秒〜数分かかります)`);
-                      if (!ok) return;
+                      // confirm removed (バックフィルは非破壊操作のため)
                       const fd = new FormData();
                       fd.set("intent", "backfill_reviews_html");
                       fetcher.submit(fd, { method: "post" });
