@@ -107,7 +107,7 @@ async function buildProductIPMap(admin: any): Promise<Map<string, ProductIPInfo>
   `;
   let cursor: string | null = null;
   let safety = 0;
-  while (safety < 10) {
+  while (safety < 5) {  // 500商品上限
     const res: any = await admin.graphql(QUERY, { variables: { first: 100, after: cursor } });
     const j = await res.json();
     const edges = j?.data?.products?.edges ?? [];
@@ -175,10 +175,10 @@ interface LineItemTuple {
   fulfilled_at: string;
 }
 
-async function fetchAllFulfilledLineItems(admin: any): Promise<LineItemTuple[]> {
+async function fetchAllFulfilledLineItems(admin: any, sinceIso: string): Promise<LineItemTuple[]> {
   const ORDERS_QUERY = `#graphql
-    query FulfilledOrders($first: Int!, $after: String) {
-      orders(first: $first, after: $after, query: "fulfillment_status:fulfilled AND status:any", sortKey: PROCESSED_AT, reverse: true) {
+    query FulfilledOrders($first: Int!, $after: String, $q: String!) {
+      orders(first: $first, after: $after, query: $q, sortKey: PROCESSED_AT, reverse: true) {
         edges {
           node {
             id
@@ -207,8 +207,9 @@ async function fetchAllFulfilledLineItems(admin: any): Promise<LineItemTuple[]> 
   const tuples: LineItemTuple[] = [];
   let cursor: string | null = null;
   let safety = 0;
-  while (safety < 30) {
-    const res: any = await admin.graphql(ORDERS_QUERY, { variables: { first: 50, after: cursor } });
+  while (safety < 8) {  // 400件上限 (8 * 50)
+    const q = `fulfillment_status:fulfilled AND status:any AND processed_at:>=${sinceIso}`;
+    const res: any = await admin.graphql(ORDERS_QUERY, { variables: { first: 50, after: cursor, q } });
     const j = await res.json();
     const edges = j?.data?.orders?.edges ?? [];
     for (const e of edges) {
@@ -336,11 +337,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const currentPage = isNaN(pageParam) || pageParam < 1 ? 1 : pageParam;
   const PAGE_SIZE = 50;
 
+  // 期間スコープ: デフォルト過去180日 (UI で変更可能)
+  const daysParam = parseInt(url.searchParams.get("days") || "180", 10);
+  const days = isNaN(daysParam) || daysParam < 1 ? 180 : Math.min(daysParam, 730);
+  const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  console.log("[SHIPMENTS] loader start", { days, sinceIso });
   const [productIPMap, tuples, { tokens, reviews }] = await Promise.all([
     buildProductIPMap(admin),
-    fetchAllFulfilledLineItems(admin),
+    fetchAllFulfilledLineItems(admin, sinceIso),
     fetchTokensAndReviews(admin),
   ]);
+  console.log("[SHIPMENTS] data loaded", { products: productIPMap.size, tuples: tuples.length, tokens: tokens.size, reviews: reviews.size });
 
   // build rows
   const allRows: ShipmentRow[] = tuples.map((t) => {
@@ -418,7 +425,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     ipFacets: Array.from(ipFacets.entries()).map(([h, v]) => ({ handle: h, label: v.label, count: v.count })).sort((a, b) => b.count - a.count),
     categoryFacets: Array.from(categoryFacets.entries()).map(([k, v]) => ({ key: k, count: v })).sort((a, b) => b.count - a.count),
     stateCounts,
-    filters: { ip: ipHandleParam, category: categoryParam, state: stateParam },
+    filters: { ip: ipHandleParam, category: categoryParam, state: stateParam, days },
   };
 };
 
