@@ -709,7 +709,7 @@ async function getProductApprovedList(admin: any, productGid: string): Promise<{
 }
 
 async function setProductApprovedList(admin: any, productGid: string, ids: string[]): Promise<void> {
-  await admin.graphql(PRODUCT_METAFIELD_SET, {
+  const res: any = await admin.graphql(PRODUCT_METAFIELD_SET, {
     variables: {
       metafields: [{
         ownerId: productGid,
@@ -720,13 +720,28 @@ async function setProductApprovedList(admin: any, productGid: string, ids: strin
       }],
     },
   });
+  const json = await res.json();
+  const errs = json?.data?.metafieldsSet?.userErrors ?? [];
+  if (errs.length > 0) {
+    console.error("[SET-LIST] userErrors", { productGid, idsLen: ids.length, errs });
+  } else {
+    console.log("[SET-LIST] ok", { productGid, idsLen: ids.length });
+  }
 }
 
 async function addReviewToProductList(admin: any, productGid: string, reviewGid: string): Promise<string[]> {
-  const { ids } = await getProductApprovedList(admin, productGid);
-  if (!ids.includes(reviewGid)) ids.push(reviewGid);
-  await setProductApprovedList(admin, productGid, ids);
-  return ids;
+  try {
+    console.log("[ADD-LIST] enter", { productGid, reviewGid });
+    const { ids } = await getProductApprovedList(admin, productGid);
+    console.log("[ADD-LIST] current list", { productGid, currentLen: ids.length });
+    if (!ids.includes(reviewGid)) ids.push(reviewGid);
+    await setProductApprovedList(admin, productGid, ids);
+    console.log("[ADD-LIST] written", { productGid, newLen: ids.length });
+    return ids;
+  } catch (e: any) {
+    console.error("[ADD-LIST] FAIL", { productGid, reviewGid, error: e?.message ?? String(e) });
+    throw e;
+  }
 }
 
 async function removeReviewFromProductList(admin: any, productGid: string, reviewGid: string): Promise<string[]> {
@@ -770,20 +785,29 @@ async function fetchReviewsByIds(admin: any, ids: string[]): Promise<any[]> {
 
 async function regenerateProductReviewsHtml(admin: any, productGid: string): Promise<{ ok: boolean; count: number; skipped?: boolean; error?: string }> {
   try {
-    if (!productGid || !productGid.startsWith("gid://shopify/Product/")) return { ok: false, count: 0, error: "invalid product gid" };
+    console.log("[REGEN] enter", { productGid });
+    if (!productGid || !productGid.startsWith("gid://shopify/Product/")) { 
+      console.error("[REGEN] invalid gid", { productGid });
+      return { ok: false, count: 0, error: "invalid product gid" }; 
+    }
     // 1. product info + 既存 HTML + approved_reviews 索引リストを 1 query で取得
     const { title: productTitle, existingHtml, ids } = await getProductApprovedList(admin, productGid);
+    console.log("[REGEN] got product info", { productGid, productTitle, existingHtmlLen: existingHtml.length, idsLen: ids.length });
     // 2. 索引リストにある review ID だけ nodes() で取得
     const reviews = await fetchReviewsByIds(admin, ids);
+    console.log("[REGEN] fetched reviews", { productGid, reviewsLen: reviews.length });
     // 3. リストにあるが status が approved でない (=stale) を filter で除外していたら、リストも掃除
     if (reviews.length !== ids.length) {
       const liveIds = reviews.map((r) => r.id);
+      console.log("[REGEN] stale cleanup", { productGid, before: ids.length, after: liveIds.length });
       await setProductApprovedList(admin, productGid, liveIds);
     }
     // 4. HTML 描画 + 比較 skip + write
     const html = renderReviewsContainerHtml(reviews, productTitle);
     const valueToWrite = html || "(no reviews)";
+    console.log("[REGEN] html ready", { productGid, htmlLen: valueToWrite.length, existingMatches: existingHtml === valueToWrite });
     if (existingHtml === valueToWrite) {
+      console.log("[REGEN] skip (unchanged)", { productGid });
       return { ok: true, count: reviews.length, skipped: true };
     }
     const res: any = await admin.graphql(PRODUCT_METAFIELD_SET, {
@@ -799,9 +823,14 @@ async function regenerateProductReviewsHtml(admin: any, productGid: string): Pro
     });
     const json = await res.json();
     const errs = json?.data?.metafieldsSet?.userErrors ?? [];
-    if (errs.length > 0) return { ok: false, count: reviews.length, error: errs.map((e: any) => e.message).join(", ") };
+    if (errs.length > 0) { 
+      console.error("[REGEN] metafieldsSet userErrors", { productGid, errs });
+      return { ok: false, count: reviews.length, error: errs.map((e: any) => e.message).join(", ") }; 
+    }
+    console.log("[REGEN] DONE", { productGid, count: reviews.length, htmlLen: valueToWrite.length });
     return { ok: true, count: reviews.length, skipped: false };
   } catch (e: any) {
+    console.error("[REGEN] CAUGHT", { productGid, error: e?.message ?? String(e), stack: e?.stack?.slice(0, 500) });
     return { ok: false, count: 0, error: e?.message ?? String(e) };
   }
 }
@@ -1725,6 +1754,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   );
 
   // v10: approve/reject 時に approved_reviews 索引リストを incremental 更新 → 高速 regenerate
+  console.log("[ACTION] start maintenance phase", { intent, idsLen: ids.length });
   // 1. review ごとに product_ref を取得
   const reviewProductMap = new Map<string, string>();
   for (const id of ids) {
@@ -1734,8 +1764,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const fields = j?.data?.metaobject?.fields ?? [];
       const prodRef = fields.find((f: any) => f.key === "product_ref")?.value;
       if (prodRef) reviewProductMap.set(id, prodRef);
-    } catch (e) { /* skip */ }
+    } catch (e: any) { console.error("[ACTION] fetch product_ref FAIL", { reviewId: id, error: e?.message ?? String(e) }); }
   }
+  console.log("[ACTION] product_ref map built", { mapSize: reviewProductMap.size });
   // 2. approve なら list に追加 / reject なら list から削除
   const productGids = new Set<string>();
   for (const [reviewId, productGid] of reviewProductMap.entries()) {
@@ -1746,12 +1777,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       } else if (intent === "reject") {
         await removeReviewFromProductList(admin, productGid, reviewId);
       }
-    } catch (e) { /* skip; regenerate will still run */ }
+    } catch (e: any) { console.error("[ACTION] list maintenance FAIL", { intent, productGid, reviewId, error: e?.message ?? String(e) }); }
   }
   // 3. 対象 product の HTML を再生成 (索引リスト経由で高速)
   for (const productGid of productGids) {
-    await regenerateProductReviewsHtml(admin, productGid);
+    const result = await regenerateProductReviewsHtml(admin, productGid);
+    if (!result.ok) console.error("[ACTION] regenerate FAIL", { productGid, result });
+    else console.log("[ACTION] regenerate result", { productGid, ok: result.ok, count: result.count, skipped: result.skipped });
   }
+  console.log("[ACTION] maintenance phase complete", { productsProcessed: productGids.size });
 
   return {
     ok: updates.every((u) => u.ok),
