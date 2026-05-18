@@ -101,9 +101,38 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   let shopifyDiscounts: any[] = [];
   let discountFetchError: string | null = null;
   try {
-    const dres: any = await admin.graphql(SHOPIFY_DISCOUNTS_QUERY);
-    const dj = await dres.json();
-    if (dj?.errors && dj.errors.length > 0) {
+    let dj: any;
+    const offlineToken = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
+    const fallbackShop = session?.shop || process.env.PRODUCTION_SHOP_DOMAIN || "";
+    // Try merchant OAuth first, fall back to offline token if scope is insufficient
+    try {
+      const dres: any = await admin.graphql(SHOPIFY_DISCOUNTS_QUERY);
+      dj = await dres.json();
+    } catch (oauthErr: any) {
+      dj = { errors: [{ message: "oauth_failed: " + String(oauthErr?.message || oauthErr) }] };
+    }
+    const oauthEmpty = !dj?.data?.codeDiscountNodes?.edges || dj.data.codeDiscountNodes.edges.length === 0;
+    const oauthHasError = dj?.errors && dj.errors.length > 0;
+    if ((oauthEmpty || oauthHasError) && offlineToken && fallbackShop) {
+      // Fallback: use offline admin token with full scope
+      try {
+        const r = await fetch(`https://${fallbackShop}/admin/api/2024-10/graphql.json`, {
+          method: "POST",
+          headers: { "X-Shopify-Access-Token": offlineToken, "Content-Type": "application/json" },
+          body: JSON.stringify({ query: SHOPIFY_DISCOUNTS_QUERY.replace(/^#graphql\s*/, "") }),
+        });
+        const fbj = await r.json();
+        if (fbj?.data?.codeDiscountNodes?.edges?.length > 0) {
+          dj = fbj;
+          discountFetchError = null;
+        } else if (fbj?.errors) {
+          discountFetchError = "offline_token_error: " + fbj.errors.map((e: any) => e.message).join("; ");
+        }
+      } catch (fbErr: any) {
+        if (!discountFetchError) discountFetchError = "fallback_failed: " + String(fbErr?.message || fbErr);
+      }
+    }
+    if (dj?.errors && dj.errors.length > 0 && !discountFetchError) {
       discountFetchError = dj.errors.map((er: any) => er.message).join("; ");
     }
     const edges = dj?.data?.codeDiscountNodes?.edges ?? [];
@@ -137,8 +166,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // shop handle for absolute Shopify admin deep-links inside iframe
   const shopHandle = (session?.shop || "").replace(".myshopify.com", "");
 
-  return { settings, coupons, stats: { totalIssued, totalUsed, usageRate }, shopifyDiscounts, discountFetchError, shopHandle };
+  return { settings, coupons, stats: { totalIssued, totalUsed, usageRate }, shopifyDiscounts, discountFetchError, shopHandle, build_tag: "0e7411b+fallback" };
 };
+
+export const headers: HeadersFunction = () => ({
+  "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+  "Pragma": "no-cache",
+  "Expires": "0",
+});
 
 // ──────────────────────────────────────────────────────────────────
 // Action
@@ -454,7 +489,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 // UI
 // ──────────────────────────────────────────────────────────────────
 export default function IncentiveTab() {
-  const { settings, coupons, stats, shopifyDiscounts, discountFetchError, shopHandle } = useLoaderData<typeof loader>() as any;
+  const { settings, coupons, stats, shopifyDiscounts, discountFetchError, shopHandle, build_tag } = useLoaderData<typeof loader>() as any;
   const [searchParams, setSearchParams] = useSearchParams();
   const fetcher = useFetcher<typeof action>();
   const [tabIdx, setTabIdx] = useState(parseInt(searchParams.get("tab") || "0", 10));
@@ -571,7 +606,7 @@ export default function IncentiveTab() {
                 <BlockStack gap="400">
                   <Text as="h2" variant="headingLg">クーポン設定</Text>
                   <Banner tone="info">
-                    <Text as="p" variant="bodyMd">🔍 DEBUG: discounts_count=<strong>{(shopifyDiscounts || []).length}</strong> / fetch_error=<strong>{discountFetchError ? "YES" : "none"}</strong> / shop=<strong>{shopHandle || "?"}</strong></Text>
+                    <Text as="p" variant="bodyMd">🔍 DEBUG: build=<strong>{build_tag || "OLD-CACHED"}</strong> / discounts=<strong>{(shopifyDiscounts || []).length}</strong> / err=<strong>{discountFetchError ? "YES" : "none"}</strong> / shop=<strong>{shopHandle || "?"}</strong></Text>
                   </Banner>
                   <Banner tone="info">
                     <BlockStack gap="100">
