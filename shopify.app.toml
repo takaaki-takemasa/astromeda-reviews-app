@@ -21,10 +21,19 @@ include_config_on_deploy = true
 # 口コミ機能で必要な scope:
 # - read_orders: Webhook (orders/fulfilled) で発注情報を取得
 # - read_customers: お客様の氏名・メールアドレス取得
-# - read_products: 商品情報取得 (レビュー対象商品)
-# - read/write_metaobjects: astromeda_review / astromeda_review_token /
-#                            astromeda_email_template / astromeda_send_queue /
-#                            astromeda_gift_token / astromeda_audit_log の CRUD
+# - read_products / write_products: 商品取得 + 商品 metafield (astromeda.reviews_html / approved_reviews) への書き込み
+# - read/write_metaobjects: Metaobject CRUD
 # - read/write_metaobject_definitions: Metaobject 定義作成 (初回 setup)
 # - read/write_files: お客様アップロード写真を Shopify Files へ保存
-# - read_content: Storefront 表示連携時に Article/Pag
+# - read_content: Storefront 表示連携時に Article/Page の参照
+scopes = "read_orders,read_customers,read_products,write_products,read_metaobjects,write_metaobjects,read_metaobject_definitions,write_metaobject_definitions,read_files,write_files,read_content"
+
+[auth]
+redirect_urls = [
+  "https://astromeda-reviews-app.vercel.app/auth/callback",
+  "https://astromeda-reviews-app.vercel.app/auth/shopify/callback",
+  "https://astromeda-reviews-app.vercel.app/api/auth/callback"
+]
+
+[webhooks]
+api_version = "2025-01"
