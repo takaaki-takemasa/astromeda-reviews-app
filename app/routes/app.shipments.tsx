@@ -19,11 +19,11 @@
 
 import {
   Page, Layout, Card, BlockStack, InlineStack, Text, EmptyState, IndexTable, Badge,
-  Tabs, Select, Button, Pagination, Banner,
+  Tabs, Select, Button, Pagination, Banner, Popover, ActionList, TextField,
 } from "@shopify/polaris";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { useLoaderData, useSearchParams, useFetcher, Form } from "@remix-run/react";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { authenticate } from "../shopify.server";
 import { appendAuditLogSafe } from "../lib/audit-log";
 
@@ -380,17 +380,26 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     };
   });
 
-  // IP / category facets
+  // Context-aware facets:
+  //  - ipFacets: 商品カテゴリ filter を適用後の IP 分布 (現在のカテゴリ文脈で各 IP 何件)
+  //  - categoryFacets: IP filter を適用後のカテゴリ分布 (現在の IP 文脈で各カテゴリ何件)
+  //  - allIpTotal: 全 IP 合計件数 (商品カテゴリ filter のみ適用)
+  const rowsForIpFacets = allRows.filter((r) => categoryParam === "all" || r.category === categoryParam);
+  const rowsForCategoryFacets = allRows.filter((r) => ipHandleParam === "all" || r.ip_handle === ipHandleParam);
   const ipFacets = new Map<string, { label: string; count: number }>();
   const categoryFacets = new Map<string, number>();
-  for (const r of allRows) {
+  for (const r of rowsForIpFacets) {
     const cur = ipFacets.get(r.ip_handle);
     if (cur) cur.count++;
     else ipFacets.set(r.ip_handle, { label: r.ip_label, count: 1 });
+  }
+  for (const r of rowsForCategoryFacets) {
     categoryFacets.set(r.category, (categoryFacets.get(r.category) || 0) + 1);
   }
+  const allIpTotal = rowsForIpFacets.length;
+  const allCategoryTotal = rowsForCategoryFacets.length;
 
-  // state counts (after IP/category filter)
+  // state counts (after IP+category filter)
   const filtered = allRows.filter((r) => {
     if (ipHandleParam !== "all" && r.ip_handle !== ipHandleParam) return false;
     if (categoryParam !== "all" && r.category !== categoryParam) return false;
@@ -454,6 +463,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     ipFacets: Array.from(ipFacets.entries()).map(([h, v]) => ({ handle: h, label: v.label, count: v.count })).sort((a, b) => b.count - a.count),
     categoryFacets: Array.from(categoryFacets.entries()).map(([k, v]) => ({ key: k, count: v })).sort((a, b) => b.count - a.count),
     stateCounts,
+    allIpTotal,
+    allCategoryTotal,
     filters: { ip: ipHandleParam, category: categoryParam, state: stateParam, days, sortBy, sortDir },
   };
 };
@@ -572,37 +583,72 @@ function fmtDate(iso: string): string {
   } catch { return ""; }
 }
 
+function fmtRelative(iso: string): string {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso).getTime();
+    const now = Date.now();
+    const diffMs = now - d;
+    const day = Math.floor(diffMs / 86400000);
+    if (diffMs < 0) return "未来日";
+    if (day === 0) return "今日";
+    if (day === 1) return "昨日";
+    if (day < 7) return `${day}日前`;
+    if (day < 30) return `${Math.floor(day / 7)}週間前`;
+    if (day < 365) return `${Math.floor(day / 30)}ヶ月前`;
+    return `${Math.floor(day / 365)}年前`;
+  } catch { return ""; }
+}
+
 function StateBadge({ state }: { state: ShipmentState }) {
-  if (state === "pending_request") return <Badge tone="critical">未依頼</Badge>;
-  if (state === "requested") return <Badge tone="attention">依頼済</Badge>;
-  return <Badge tone="success">レビュー済</Badge>;
+  if (state === "pending_request") return <Badge tone="critical">🔴 未依頼</Badge>;
+  if (state === "requested") return <Badge tone="attention">🟡 依頼済</Badge>;
+  return <Badge tone="success">🟢 レビュー済</Badge>;
 }
 
 export default function ShipmentsTab() {
-  const { rows, pagination, ipFacets, categoryFacets, stateCounts, filters } = useLoaderData<typeof loader>();
+  const { rows, pagination, ipFacets, categoryFacets, stateCounts, filters, allIpTotal, allCategoryTotal } = useLoaderData<typeof loader>() as any;
   const [searchParams, setSearchParams] = useSearchParams();
   const fetcher = useFetcher<typeof action>();
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
 
-  // IP tabs
-  const ipTabs = [
-    { id: "all", content: `全IP (${ipFacets.reduce((a, b) => a + b.count, 0)})` },
-    ...ipFacets.map((f) => ({ id: f.handle, content: `${f.label} (${f.count})` })),
+  // IP セレクター: 上位 4 IP は Tab、残りは Popover + 検索可能 ActionList
+  const TOP_IP_COUNT = 4;
+  const topIps = ipFacets.slice(0, TOP_IP_COUNT);
+  const restIps = ipFacets.slice(TOP_IP_COUNT);
+  const allTabs = [
+    { id: "all", content: `全IP (${allIpTotal})` },
+    ...topIps.map((f: any) => ({ id: f.handle, content: `${f.label} (${f.count})` })),
   ];
-  const ipTabIndex = Math.max(0, ipTabs.findIndex((t) => t.id === filters.ip));
+  // selected IP がトップ 4 に居なければ全IPタブを active 扱いにし、別途 chip で表示
+  const selectedIp = filters.ip;
+  const selectedIpInTop = selectedIp === "all" || topIps.some((t: any) => t.handle === selectedIp);
+  const ipTabIndex = selectedIpInTop ? Math.max(0, allTabs.findIndex((t) => t.id === selectedIp)) : 0;
 
   const handleIpTabChange = useCallback((idx: number) => {
-    const nextIp = ipTabs[idx].id;
+    const nextIp = allTabs[idx].id;
     const next = new URLSearchParams(searchParams);
     next.set("ip", nextIp);
     next.set("page", "1");
     setSearchParams(next);
-  }, [searchParams, setSearchParams, ipTabs]);
+  }, [searchParams, setSearchParams, allTabs]);
+
+  // 検索可能 IP popover
+  const [ipPopoverActive, setIpPopoverActive] = useState(false);
+  const [ipSearchQuery, setIpSearchQuery] = useState("");
+  const filteredRestIps = useMemo(() => {
+    const q = ipSearchQuery.trim().toLowerCase();
+    if (!q) return restIps;
+    return restIps.filter((f: any) => f.label.toLowerCase().includes(q) || f.handle.toLowerCase().includes(q));
+  }, [restIps, ipSearchQuery]);
+
+  // 現在選択中の IP が rest 側にある場合のラベル
+  const selectedRestIp = restIps.find((f: any) => f.handle === selectedIp);
 
   // Category select
   const categoryOptions = [
-    { label: `全カテゴリ`, value: "all" },
-    ...categoryFacets.map((f) => ({ label: `${f.key} (${f.count})`, value: f.key })),
+    { label: `全カテゴリ (${allCategoryTotal})`, value: "all" },
+    ...categoryFacets.map((f: any) => ({ label: `${f.key} (${f.count})`, value: f.key })),
   ];
   const handleCategoryChange = useCallback((val: string) => {
     const next = new URLSearchParams(searchParams);
@@ -625,47 +671,22 @@ export default function ShipmentsTab() {
     setSearchParams(next);
   }, [searchParams, setSearchParams, stateTabs]);
 
-  // Sort handler: click column header to toggle ASC/DESC
+  // Sort - Polaris IndexTable native sortable API
   const currentSortBy = filters.sortBy || "fulfilled_at";
   const currentSortDir = filters.sortDir || "desc";
-  const handleSort = useCallback((key: string) => {
+  // 列順: 商品/IP, お客様, 注文番号, 発送日, 状態, アクション
+  const sortColumnKeyByIndex: Record<number, string> = { 0: "product", 1: "customer", 2: "order_id", 3: "fulfilled_at", 4: "state" };
+  const sortColumnIndexByKey: Record<string, number> = { product: 0, customer: 1, order_id: 2, fulfilled_at: 3, state: 4 };
+  const sortColumnIndex = sortColumnIndexByKey[currentSortBy] ?? 3;
+  const handlePolarisSort = useCallback((idx: number, direction: "ascending" | "descending") => {
+    const key = sortColumnKeyByIndex[idx];
+    if (!key) return;
     const next = new URLSearchParams(searchParams);
-    if (currentSortBy === key) {
-      // toggle direction
-      next.set("sort_dir", currentSortDir === "asc" ? "desc" : "asc");
-    } else {
-      next.set("sort_by", key);
-      next.set("sort_dir", key === "fulfilled_at" ? "desc" : "asc");
-    }
+    next.set("sort_by", key);
+    next.set("sort_dir", direction === "ascending" ? "asc" : "desc");
     next.set("page", "1");
     setSearchParams(next);
-  }, [searchParams, setSearchParams, currentSortBy, currentSortDir]);
-
-  // Build sortable header label with arrow indicator
-  const sortLabel = (key: string, label: string): any => {
-    const active = currentSortBy === key;
-    const arrow = active ? (currentSortDir === "asc" ? " ▲" : " ▼") : "";
-    return (
-      <button
-        type="button"
-        onClick={() => handleSort(key)}
-        style={{
-          background: "transparent",
-          border: "none",
-          padding: 0,
-          margin: 0,
-          font: "inherit",
-          color: active ? "#005bd3" : "inherit",
-          fontWeight: active ? 600 : 500,
-          cursor: "pointer",
-          textAlign: "left",
-        }}
-        title={active ? "クリックで並び順を反転" : "クリックで並べ替え"}
-      >
-        {label}{arrow}
-      </button>
-    );
-  };
+  }, [searchParams, setSearchParams]);
 
   // Pagination
   const handlePage = useCallback((newPage: number) => {
@@ -705,10 +726,62 @@ export default function ShipmentsTab() {
         <Layout.Section>
           <Card>
             <BlockStack gap="400">
-              <Tabs tabs={ipTabs} selected={ipTabIndex} onSelect={handleIpTabChange} />
-              <InlineStack gap="400" align="space-between">
+              <InlineStack gap="200" align="start" blockAlign="center" wrap={false}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <Tabs tabs={allTabs} selected={ipTabIndex} onSelect={handleIpTabChange} />
+                </div>
+                {restIps.length > 0 ? (
+                  <Popover
+                    active={ipPopoverActive}
+                    activator={
+                      <Button
+                        onClick={() => setIpPopoverActive(!ipPopoverActive)}
+                        disclosure={ipPopoverActive ? "up" : "down"}
+                        pressed={!!selectedRestIp}
+                      >
+                        {selectedRestIp ? `${selectedRestIp.label} (${selectedRestIp.count})` : `他 ${restIps.length} IP`}
+                      </Button>
+                    }
+                    onClose={() => setIpPopoverActive(false)}
+                    preferredAlignment="right"
+                  >
+                    <div style={{ padding: 12, minWidth: 320 }}>
+                      <TextField
+                        label="IP を検索"
+                        labelHidden
+                        autoComplete="off"
+                        placeholder="IPコラボ名で検索…"
+                        value={ipSearchQuery}
+                        onChange={setIpSearchQuery}
+                        clearButton
+                        onClearButtonClick={() => setIpSearchQuery("")}
+                      />
+                      <div style={{ maxHeight: 320, overflowY: "auto", marginTop: 8 }}>
+                        <ActionList
+                          items={filteredRestIps.map((f: any) => ({
+                            content: `${f.label} (${f.count})`,
+                            onAction: () => {
+                              const next = new URLSearchParams(searchParams);
+                              next.set("ip", f.handle);
+                              next.set("page", "1");
+                              setSearchParams(next);
+                              setIpPopoverActive(false);
+                              setIpSearchQuery("");
+                            },
+                            active: selectedIp === f.handle,
+                          }))}
+                        />
+                        {filteredRestIps.length === 0 ? (
+                          <Text as="p" variant="bodySm" tone="subdued">該当する IP がありません</Text>
+                        ) : null}
+                      </div>
+                    </div>
+                  </Popover>
+                ) : null}
+              </InlineStack>
+              <InlineStack gap="400" align="space-between" blockAlign="end">
                 <Select label="商品カテゴリ" options={categoryOptions} value={filters.category} onChange={handleCategoryChange} />
-                <InlineStack gap="200">
+                <InlineStack gap="200" blockAlign="center">
                   <Text as="span" variant="bodyMd" tone="subdued">全 {pagination.totalCount} 件中 {(pagination.currentPage - 1) * pagination.pageSize + 1}-{Math.min(pagination.currentPage * pagination.pageSize, pagination.totalCount)} 件表示</Text>
                   <Pagination
                     hasPrevious={pagination.currentPage > 1}
@@ -729,41 +802,57 @@ export default function ShipmentsTab() {
                   resourceName={{ singular: "発送明細", plural: "発送明細" }}
                   itemCount={rows.length}
                   selectable={false}
+                  sortable={[true, true, true, true, true, false]}
+                  sortDirection={currentSortDir === "asc" ? "ascending" : "descending"}
+                  sortColumnIndex={sortColumnIndex}
+                  defaultSortDirection="descending"
+                  onSort={handlePolarisSort}
                   headings={[
-                    { title: sortLabel("product", "商品 / IP") as any },
-                    { title: sortLabel("customer", "お客様") as any },
-                    { title: sortLabel("order_id", "注文番号") as any },
-                    { title: sortLabel("fulfilled_at", "発送日") as any },
-                    { title: sortLabel("state", "状態") as any },
+                    { title: "商品 / IP" },
+                    { title: "お客様" },
+                    { title: "注文番号" },
+                    { title: "発送日" },
+                    { title: "状態" },
                     { title: "アクション" },
                   ]}
                 >
-                  {rows.map((r, idx) => (
+                  {rows.map((r: any, idx: number) => (
                     <IndexTable.Row id={r.key} key={r.key} position={idx}>
                       <IndexTable.Cell>
-                        <InlineStack gap="200" blockAlign="center">
-                          {r.product_image_url ? (
-                            <img src={r.product_image_url} alt={r.product_title} style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 4, border: "1px solid #e5e7eb" }} />
-                          ) : (
-                            <div style={{ width: 48, height: 48, background: "#f3f4f6", borderRadius: 4 }} />
-                          )}
-                          <BlockStack gap="100">
-                            <Text as="span" variant="bodyMd" fontWeight="semibold">{r.product_title.slice(0, 40)}{r.product_title.length > 40 ? "…" : ""}</Text>
-                            <Text as="span" variant="bodySm" tone="subdued">{r.ip_label} · {r.category}</Text>
-                          </BlockStack>
-                        </InlineStack>
+                        <div style={{ maxWidth: 420 }}>
+                          <InlineStack gap="200" blockAlign="center" wrap={false}>
+                            {r.product_image_url ? (
+                              <img src={r.product_image_url} alt={r.product_title} style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 4, border: "1px solid #e5e7eb", flexShrink: 0 }} />
+                            ) : (
+                              <div style={{ width: 48, height: 48, background: "#f3f4f6", borderRadius: 4, flexShrink: 0 }} />
+                            )}
+                            <BlockStack gap="050">
+                              <div style={{ maxWidth: 340, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.product_title}>
+                                <Text as="span" variant="bodyMd" fontWeight="semibold">{r.product_title}</Text>
+                              </div>
+                              <Text as="span" variant="bodySm" tone="subdued">{r.ip_label} · {r.category}</Text>
+                            </BlockStack>
+                          </InlineStack>
+                        </div>
                       </IndexTable.Cell>
                       <IndexTable.Cell>
-                        <BlockStack gap="050">
-                          <Text as="span" variant="bodyMd">{r.customer_name}</Text>
-                          <Text as="span" variant="bodySm" tone="subdued">{r.customer_email}</Text>
-                        </BlockStack>
+                        <div style={{ maxWidth: 220 }}>
+                          <BlockStack gap="050">
+                            <Text as="span" variant="bodyMd">{r.customer_name}</Text>
+                            <div style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.customer_email}>
+                              <Text as="span" variant="bodySm" tone="subdued">{r.customer_email}</Text>
+                            </div>
+                          </BlockStack>
+                        </div>
                       </IndexTable.Cell>
                       <IndexTable.Cell>
                         <Text as="span" variant="bodyMd">{r.order_id}</Text>
                       </IndexTable.Cell>
                       <IndexTable.Cell>
-                        <Text as="span" variant="bodyMd">{fmtDate(r.fulfilled_at)}</Text>
+                        <BlockStack gap="050">
+                          <Text as="span" variant="bodyMd">{fmtDate(r.fulfilled_at)}</Text>
+                          <Text as="span" variant="bodySm" tone="subdued">{fmtRelative(r.fulfilled_at)}</Text>
+                        </BlockStack>
                       </IndexTable.Cell>
                       <IndexTable.Cell>
                         <StateBadge state={r.state} />
