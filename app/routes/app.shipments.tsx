@@ -169,7 +169,7 @@ interface LineItemTuple {
   fulfilled_at: string;
 }
 
-async function fetchAllFulfilledLineItems(admin: any, sinceIso: string): Promise<{ tuples: LineItemTuple[]; partial: boolean }> {
+async function fetchAllFulfilledLineItems(admin: any, sinceIso: string): Promise<{ tuples: LineItemTuple[]; partial: boolean; stats: any }> {
   const ORDERS_QUERY = `#graphql
     query FulfilledOrders($first: Int!, $after: String, $q: String!) {
       orders(first: $first, after: $after, query: $q, sortKey: PROCESSED_AT, reverse: true) {
@@ -251,8 +251,9 @@ async function fetchAllFulfilledLineItems(admin: any, sinceIso: string): Promise
     cursor = pi.endCursor;
     safety++;
   }
-  console.log("[SHIPMENTS] fetch summary", { safety, totalOrders, skippedNoEmail, skippedNoProduct, skippedDup, skippedNonParent, tuplesGenerated: tuples.length, ordersPartial });
-  return { tuples, partial: ordersPartial };
+  const stats = { safety, totalOrders, skippedNoEmail, skippedNoProduct, skippedDup, skippedNonParent, tuplesGenerated: tuples.length, ordersPartial };
+  console.log("[SHIPMENTS] fetch summary", stats);
+  return { tuples, partial: ordersPartial, stats };
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -361,6 +362,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   ]);
   const tuples = tuplesResult.tuples;
   const ordersPartial = tuplesResult.partial;
+  const fetchStats = tuplesResult.stats;
   const productGids = Array.from(new Set(tuples.map((t) => t.product_gid)));
   const productIPMap = await buildProductIPMap(admin, productGids);
   console.log("[SHIPMENTS] data loaded", { products: productIPMap.size, tuples: tuples.length, tokens: tokens.size, reviews: reviews.size });
@@ -484,6 +486,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     allIpTotal,
     allCategoryTotal,
     ordersPartial,
+    fetchStats,
     filters: { ip: ipHandleParam, category: categoryParam, state: stateParam, days, sortBy, sortDir },
   };
 };
@@ -626,7 +629,7 @@ function StateBadge({ state }: { state: ShipmentState }) {
 }
 
 export default function ShipmentsTab() {
-  const { rows, pagination, ipFacets, categoryFacets, stateCounts, filters, allIpTotal, allCategoryTotal, ordersPartial } = useLoaderData<typeof loader>() as any;
+  const { rows, pagination, ipFacets, categoryFacets, stateCounts, filters, allIpTotal, allCategoryTotal, ordersPartial, fetchStats } = useLoaderData<typeof loader>() as any;
   const [searchParams, setSearchParams] = useSearchParams();
   const fetcher = useFetcher<typeof action>();
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
@@ -753,6 +756,21 @@ export default function ShipmentsTab() {
       subtitle={`発送済み注文を商品×お客様単位で表示。3状態 (未依頼/依頼済/レビュー済) を可視化し、個別に「今すぐ依頼を送る」ことができます。`}
     >
       <Layout>
+        {fetchStats ? (
+          <Layout.Section>
+            <Banner tone="info" title="🔍 取得統計 (デバッグ用・後で削除)">
+              <Text as="p" variant="bodyMd">
+                fetched orders: <strong>{fetchStats.totalOrders}</strong> ({fetchStats.safety} pages × 250) /
+                tuples: <strong>{fetchStats.tuplesGenerated}</strong> /
+                no_email skipped: {fetchStats.skippedNoEmail} /
+                no_product skipped: {fetchStats.skippedNoProduct} /
+                dup skipped: {fetchStats.skippedDup} /
+                non_parent skipped: {fetchStats.skippedNonParent} /
+                partial: {String(fetchStats.ordersPartial)}
+              </Text>
+            </Banner>
+          </Layout.Section>
+        ) : null}
         {ordersPartial ? (
           <Layout.Section>
             <Banner tone="warning" title="取得タイムアウト: 一部の発送のみ表示中">
