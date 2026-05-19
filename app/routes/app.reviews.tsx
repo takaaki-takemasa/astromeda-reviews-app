@@ -1416,6 +1416,25 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return { ok: true, intent, edited: 1 };
   }
 
+  // ─── intent: quick_edit_name (inline edit of reviewer_name) ───
+  if (intent === "quick_edit_name") {
+    const reviewId = String(formData.get("reviewId") || "");
+    const newName = String(formData.get("reviewer_name") || "").trim().slice(0, 40);
+    if (!reviewId.startsWith("gid://shopify/Metaobject/")) return { ok: false, error: "review id が不正です", intent };
+    if (newName.length < 1) return { ok: false, error: "投稿者名が空です", intent };
+    const r = await admin.graphql(EDIT_REVIEW_MUTATION, { variables: { id: reviewId, fields: [{ key: "reviewer_name", value: newName }] } });
+    const j = (await r.json()) as { data?: { metaobjectUpdate?: { userErrors: Array<{ message: string }> } } };
+    const errs = j.data?.metaobjectUpdate?.userErrors ?? [];
+    if (errs.length > 0) return { ok: false, error: `保存失敗: ${errs.map((e) => e.message).join(", ")}`, intent };
+    await appendAuditLogSafe({
+      admin, actor: session.shop, action: "review.quick_edit_name",
+      resource_id: reviewId, resource_type: "astromeda_review",
+      request, metadata: { reviewer_name: newName },
+    });
+    await regenerateForReview(admin, reviewId);
+    return { ok: true, intent, edited: 1 };
+  }
+
     if (intent === "edit") {
     const reviewId = String(formData.get("reviewId") || "");
     if (!reviewId.startsWith("gid://shopify/Metaobject/")) {
@@ -2334,6 +2353,8 @@ export default function ReviewsTab() {
   const [editBody, setEditBody] = useState("");
   const [inlineEditId, setInlineEditId] = useState<string | null>(null);
   const [inlineEditBody, setInlineEditBody] = useState<string>("");
+  const [inlineEditNameId, setInlineEditNameId] = useState<string | null>(null);
+  const [inlineEditNameValue, setInlineEditNameValue] = useState<string>("");
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [photoUrlInputs, setPhotoUrlInputs] = useState<Record<number, string>>({});
@@ -2683,14 +2704,79 @@ export default function ReviewsTab() {
         })()}
       </IndexTable.Cell>
       <IndexTable.Cell>
-        <div style={{ display: "flex", flexDirection: "column", gap: 2, maxWidth: 90, fontSize: 11, lineHeight: 1.3 }}>
-          <span style={{ fontWeight: 600, color: "#374151", wordBreak: "break-word" }}>
-            {r.reviewer_name || "—"}
-          </span>
-          <span style={{ color: "#9ca3af", fontSize: 10 }}>
-            {new Date(r.posted_at || r.created_at).toLocaleDateString("ja-JP", { year: "2-digit", month: "numeric", day: "numeric" })}
-          </span>
-        </div>
+        {inlineEditNameId === r.id ? (
+          <div style={{ maxWidth: 200 }} onClick={(e) => e.stopPropagation()}>
+            <input
+              type="text"
+              value={inlineEditNameValue}
+              onChange={(e) => setInlineEditNameValue(e.target.value)}
+              maxLength={40}
+              autoFocus
+              style={{ width: "100%", padding: 6, border: "2px solid #2563eb", borderRadius: 4, fontSize: 12, fontFamily: "inherit" }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  const fd = new FormData();
+                  fd.set("intent", "quick_edit_name");
+                  fd.set("reviewId", r.id);
+                  fd.set("reviewer_name", inlineEditNameValue);
+                  fetcher.submit(fd, { method: "post" });
+                  setInlineEditNameId(null);
+                } else if (e.key === "Escape") {
+                  setInlineEditNameId(null);
+                  setInlineEditNameValue("");
+                }
+              }}
+            />
+            <div style={{ marginTop: 4, display: "flex", gap: 4 }}>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const fd = new FormData();
+                  fd.set("intent", "quick_edit_name");
+                  fd.set("reviewId", r.id);
+                  fd.set("reviewer_name", inlineEditNameValue);
+                  fetcher.submit(fd, { method: "post" });
+                  setInlineEditNameId(null);
+                }}
+                style={{ padding: "3px 8px", background: "#10b981", color: "#fff", border: "none", borderRadius: 3, cursor: "pointer", fontSize: 11, fontWeight: 600 }}
+              >
+                ✓
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setInlineEditNameId(null);
+                  setInlineEditNameValue("");
+                }}
+                style={{ padding: "3px 8px", background: "#fff", color: "#6b7280", border: "1px solid #d1d5db", borderRadius: 3, cursor: "pointer", fontSize: 11 }}
+              >
+                ✕
+              </button>
+            </div>
+            <div style={{ marginTop: 2, fontSize: 10, color: "#9ca3af" }}>{inlineEditNameValue.length}/40 (Enter: 保存)</div>
+          </div>
+        ) : (
+          <div
+            style={{ display: "flex", flexDirection: "column", gap: 2, maxWidth: 90, fontSize: 11, lineHeight: 1.3, cursor: "pointer", position: "relative" }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setInlineEditNameId(r.id);
+              setInlineEditNameValue(r.reviewer_name || "");
+            }}
+            title="クリックで投稿者名を編集"
+          >
+            <span style={{ fontWeight: 600, color: "#374151", wordBreak: "break-word" }}>
+              {r.reviewer_name || "—"}
+            </span>
+            <span style={{ color: "#9ca3af", fontSize: 10 }}>
+              {new Date(r.posted_at || r.created_at).toLocaleDateString("ja-JP", { year: "2-digit", month: "numeric", day: "numeric" })}
+            </span>
+            <span style={{ position: "absolute", top: -2, right: 0, fontSize: 9, color: "#9ca3af", opacity: 0.5 }}>✏️</span>
+          </div>
+        )}
       </IndexTable.Cell>
       <IndexTable.Cell>{statusBadge(r.status)}</IndexTable.Cell>
     </IndexTable.Row>

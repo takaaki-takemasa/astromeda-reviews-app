@@ -201,7 +201,7 @@ async function fetchAllFulfilledLineItems(admin: any, sinceIso: string): Promise
   const tuples: LineItemTuple[] = [];
   let cursor: string | null = null;
   let safety = 0;
-  while (safety < 8) {  // 400件上限 (8 * 50)
+  while (safety < 30) {  // 1500件上限 (30 * 50) - 全期間まで対応
     const q = `fulfillment_status:fulfilled AND status:any AND processed_at:>=${sinceIso}`;
     const res: any = await admin.graphql(ORDERS_QUERY, { variables: { first: 50, after: cursor, q } });
     const j = await res.json();
@@ -333,9 +333,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   // 期間スコープ: デフォルト過去180日 (UI で変更可能)
   const sortBy = (url.searchParams.get("sort_by") || "fulfilled_at").toLowerCase();
-  const sortDir = (url.searchParams.get("sort_dir") || "desc").toLowerCase() === "asc" ? "asc" : "desc";
-  const daysParam = parseInt(url.searchParams.get("days") || "180", 10);
-  const days = isNaN(daysParam) || daysParam < 1 ? 180 : Math.min(daysParam, 730);
+  const sortDir = (url.searchParams.get("sort_dir") || "asc").toLowerCase() === "asc" ? "asc" : "desc";
+  const daysParam = parseInt(url.searchParams.get("days") || "9999", 10);
+  const days = isNaN(daysParam) || daysParam < 1 ? 9999 : Math.min(daysParam, 9999);
   const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
   console.log("[SHIPMENTS] loader start", { days, sinceIso });
   // 先に発送データを取得し、そこから出てくる商品 GID だけ IP map を構築する
@@ -446,10 +446,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const bk = getSortKey(b);
     if (ak < bk) return -1 * sortMul;
     if (ak > bk) return 1 * sortMul;
-    // tie-breaker: fulfilled_at desc
+    // tie-breaker: fulfilled_at asc (default = 昔発送順)
     const aT = a.fulfilled_at ? new Date(a.fulfilled_at).getTime() : 0;
     const bT = b.fulfilled_at ? new Date(b.fulfilled_at).getTime() : 0;
-    return bT - aT;
+    return aT - bT;
   });
 
   const totalCount = stateFiltered.length;
@@ -657,6 +657,22 @@ export default function ShipmentsTab() {
     setSearchParams(next);
   }, [searchParams, setSearchParams]);
 
+  // Period filter (発送日範囲) - CEO 要望
+  const periodOptions = [
+    { label: "過去30日", value: "30" },
+    { label: "過去90日", value: "90" },
+    { label: "過去180日", value: "180" },
+    { label: "過去365日", value: "365" },
+    { label: "過去2年", value: "730" },
+    { label: "全期間", value: "9999" },
+  ];
+  const handlePeriodChange = useCallback((val: string) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("days", val);
+    next.set("page", "1");
+    setSearchParams(next);
+  }, [searchParams, setSearchParams]);
+
   // State tabs
   const stateTabs = [
     { id: "pending_request", content: `🔴 未依頼 (${stateCounts.pending_request})` },
@@ -779,8 +795,11 @@ export default function ShipmentsTab() {
                   </Popover>
                 ) : null}
               </InlineStack>
-              <InlineStack gap="400" align="space-between" blockAlign="end">
-                <Select label="商品カテゴリ" options={categoryOptions} value={filters.category} onChange={handleCategoryChange} />
+              <InlineStack gap="400" align="space-between" blockAlign="end" wrap={false}>
+                <InlineStack gap="300" blockAlign="end">
+                  <Select label="発送日範囲" options={periodOptions} value={String(filters.days || 9999)} onChange={handlePeriodChange} />
+                  <Select label="商品カテゴリ" options={categoryOptions} value={filters.category} onChange={handleCategoryChange} />
+                </InlineStack>
                 <InlineStack gap="200" blockAlign="center">
                   <Text as="span" variant="bodyMd" tone="subdued">全 {pagination.totalCount} 件中 {(pagination.currentPage - 1) * pagination.pageSize + 1}-{Math.min(pagination.currentPage * pagination.pageSize, pagination.totalCount)} 件表示</Text>
                   <Pagination
