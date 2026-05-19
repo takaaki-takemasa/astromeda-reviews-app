@@ -24,6 +24,27 @@ import { useLoaderData, useActionData, useNavigation } from "@remix-run/react";
 import { unauthenticated } from "../shopify.server";
 
 const SHOP_DOMAIN = "production-mining-base.myshopify.com";
+
+// Direct admin GraphQL client using SHOPIFY_ADMIN_ACCESS_TOKEN env var.
+// Bypasses session storage (Firestore) which doesn't have offline session for new-embedded-auth.
+function makeEnvAdminClient() {
+  const token = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
+  if (!token) return null;
+  const shop = SHOP_DOMAIN;
+  return {
+    graphql: async (query: string, opts?: { variables?: Record<string, unknown> }) => {
+      const cleanQuery = query.replace(/^#graphql\s*/, "");
+      const r = await fetch(`https://${shop}/admin/api/2024-10/graphql.json`, {
+        method: "POST",
+        headers: { "X-Shopify-Access-Token": token, "Content-Type": "application/json" },
+        body: JSON.stringify({ query: cleanQuery, variables: opts?.variables || {} }),
+      });
+      // Return a Response-like object whose .json() matches admin.graphql's shape
+      return r;
+    },
+  };
+}
+
 import { enforceRateLimit, RATE_LIMITS } from "../lib/rate-limit";
 
 /**
@@ -136,18 +157,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       return { state: "invalid_token" as const, message: "リンクが正しくありません。メールに記載されたリンクをご確認ください。" };
     }
 
-    // Step 2: use unauthenticated.admin (offline session) — review.submit.tsx と同じパターン
-    // Token UUID 自体が secret なので App Proxy HMAC は省略
+    // Step 2: get an admin client. Try unauthenticated.admin (Firestore session) first,
+    // then fall back to SHOPIFY_ADMIN_ACCESS_TOKEN env var (no Firestore lookup needed).
     let admin: any = null;
     try {
       const result = await unauthenticated.admin(SHOP_DOMAIN);
       admin = result.admin;
-    } catch (authErr: any) {
-      console.error("[proxy.submit/loader] unauthenticated.admin failed:", authErr?.message || authErr);
-      return { state: "error" as const, message: "ストア認証に失敗しました。少し待ってから再度お試しください。", diag: `auth: ${authErr?.message || "unknown"}` };
+    } catch (_) {
+      // session not found — fall back to env token
     }
     if (!admin) {
-      return { state: "error" as const, message: "ストア認証セッションが見つかりません。", diag: "no_admin" };
+      admin = makeEnvAdminClient();
+    }
+    if (!admin) {
+      return { state: "error" as const, message: "ストア認証が利用できません。", diag: "no_admin: env SHOPIFY_ADMIN_ACCESS_TOKEN not set and no offline session" };
     }
 
     // Step 3: token lookup
@@ -172,9 +195,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   enforceRateLimit(request, RATE_LIMITS.PUBLIC_SUBMIT);
-  const { admin } = await unauthenticated.admin(SHOP_DOMAIN);
+  let admin: any = null;
+  try {
+    const result = await unauthenticated.admin(SHOP_DOMAIN);
+    admin = result.admin;
+  } catch (_) { /* fall through */ }
   if (!admin) {
-    throw new Response("Shop admin auth failed", { status: 401 });
+    admin = makeEnvAdminClient();
+  }
+  if (!admin) {
+    throw new Response("Shop admin auth unavailable", { status: 503 });
   }
 
   const formData = await request.formData();
