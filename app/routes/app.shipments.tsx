@@ -83,34 +83,32 @@ function detectCategory(title: string): string {
 // 商品 → IP マッピング (Shopify collections から)
 // ──────────────────────────────────────────────────────────────────
 type ProductIPInfo = { ipLabel: string; ipHandle: string };
-async function buildProductIPMap(admin: any): Promise<Map<string, ProductIPInfo>> {
-  // products + collections を 1 query で取得
+async function buildProductIPMap(admin: any, productGids: string[]): Promise<Map<string, ProductIPInfo>> {
+  // 発送に出てくる商品 GID だけを 100 件ずつ nodes() で fetch (store 全商品 fetch を回避)
   const map = new Map<string, ProductIPInfo>();
+  if (productGids.length === 0) return map;
+  const uniqueGids = Array.from(new Set(productGids));
   const QUERY = `#graphql
-    query ProductsWithCollections($first: Int!, $after: String) {
-      products(first: $first, after: $after, query: "status:ACTIVE") {
-        edges {
-          node {
-            id
-            title
-            handle
-            templateSuffix
-            tags
-            featuredImage { url }
-            collections(first: 5) { edges { node { handle title } } }
-          }
-          cursor
+    query ProductsByIds($ids: [ID!]!) {
+      nodes(ids: $ids) {
+        ... on Product {
+          id
+          title
+          handle
+          templateSuffix
+          tags
+          collections(first: 10) { edges { node { handle title } } }
         }
-        pageInfo { hasNextPage endCursor }
       }
     }
   `;
-  let cursor: string | null = null;
-  let safety = 0;
-  while (safety < 5) {  // 500商品上限
-    const res: any = await admin.graphql(QUERY, { variables: { first: 100, after: cursor } });
+  // 100件ずつ分割 fetch
+  for (let i = 0; i < uniqueGids.length; i += 100) {
+    const batch = uniqueGids.slice(i, i + 100);
+    const res: any = await admin.graphql(QUERY, { variables: { ids: batch } });
     const j = await res.json();
-    const edges = j?.data?.products?.edges ?? [];
+    const nodes = (j?.data?.nodes ?? []).filter((n: any) => n);
+    const edges = nodes.map((n: any) => ({ node: n }));
     for (const e of edges) {
       const n = e.node;
       if (!isParentProduct(n)) continue;
@@ -152,10 +150,6 @@ async function buildProductIPMap(admin: any): Promise<Map<string, ProductIPInfo>
       }
       map.set(n.id, ip);
     }
-    const pi = j?.data?.products?.pageInfo;
-    if (!pi?.hasNextPage) break;
-    cursor = pi.endCursor;
-    safety++;
   }
   return map;
 }
@@ -344,11 +338,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const days = isNaN(daysParam) || daysParam < 1 ? 180 : Math.min(daysParam, 730);
   const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
   console.log("[SHIPMENTS] loader start", { days, sinceIso });
-  const [productIPMap, tuples, { tokens, reviews }] = await Promise.all([
-    buildProductIPMap(admin),
+  // 先に発送データを取得し、そこから出てくる商品 GID だけ IP map を構築する
+  const [tuples, { tokens, reviews }] = await Promise.all([
     fetchAllFulfilledLineItems(admin, sinceIso),
     fetchTokensAndReviews(admin),
   ]);
+  const productGids = Array.from(new Set(tuples.map((t) => t.product_gid)));
+  const productIPMap = await buildProductIPMap(admin, productGids);
   console.log("[SHIPMENTS] data loaded", { products: productIPMap.size, tuples: tuples.length, tokens: tokens.size, reviews: reviews.size });
 
   // build rows
