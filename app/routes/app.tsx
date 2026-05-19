@@ -14,31 +14,43 @@ export const links = () => [
   { rel: "stylesheet", href: brandTokensStyles },
 ];
 
-async function bootstrapOfflineSession(shop: string, sessionToken: string): Promise<void> {
+async function writeTrace(db: any, label: string, payload: any) {
+  try {
+    await db.collection("astromeda_bootstrap_trace").doc(new Date().toISOString() + "_" + Math.random().toString(36).slice(2,8)).set({
+      ts: new Date().toISOString(),
+      label,
+      payload,
+    });
+  } catch (_) {}
+}
+
+async function bootstrapOfflineSession(shop: string, sessionToken: string, request: Request): Promise<void> {
   const apiKey = process.env.SHOPIFY_API_KEY;
   const apiSecret = process.env.SHOPIFY_API_SECRET;
-  if (!apiKey || !apiSecret || !shop || !sessionToken) return;
 
-  // 1. Check Firestore for existing offline session
   const projectId = process.env.GCP_PROJECT_ID;
   const keyJson = process.env.GCP_SERVICE_ACCOUNT_KEY;
   if (!projectId || !keyJson) return;
   let credentials: any;
   try { credentials = JSON.parse(keyJson); } catch { return; }
   const db = new Firestore({ projectId, credentials });
-  const col = db.collection("shopify_sessions");
 
+  await writeTrace(db, "enter", { shop, hasSessionToken: !!sessionToken, hasApiKey: !!apiKey, hasSecret: !!apiSecret, sessionTokenLen: sessionToken?.length || 0 });
+
+  if (!apiKey || !apiSecret || !shop || !sessionToken) {
+    await writeTrace(db, "abort_missing", { shop, hasApiKey: !!apiKey, hasSecret: !!apiSecret, hasToken: !!sessionToken });
+    return;
+  }
+
+  const col = db.collection("shopify_sessions");
   const existing = await col.where("shop", "==", shop).get();
   const hasOffline = existing.docs.some((d: any) => {
     const data = d.data();
     return data.isOnline === false && data.accessToken;
   });
-  if (hasOffline) {
-    console.log("[app.tsx bootstrap] offline session already exists for", shop);
-    return;
-  }
+  await writeTrace(db, "existing_check", { shop, totalSessions: existing.size, hasOffline });
+  if (hasOffline) return;
 
-  // 2. Token exchange: session token (online) → offline access token
   const exchangeRes = await fetch(`https://${shop}/admin/oauth/access_token`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -52,19 +64,20 @@ async function bootstrapOfflineSession(shop: string, sessionToken: string): Prom
     }),
   });
 
+  await writeTrace(db, "exchange_response", { status: exchangeRes.status, statusText: exchangeRes.statusText });
+
   if (!exchangeRes.ok) {
     const errText = await exchangeRes.text();
-    console.error("[app.tsx bootstrap] token exchange failed:", exchangeRes.status, errText.slice(0, 300));
+    await writeTrace(db, "exchange_fail", { status: exchangeRes.status, body: errText.slice(0, 500) });
     return;
   }
 
   const tokenData = (await exchangeRes.json()) as { access_token?: string; scope?: string };
   if (!tokenData.access_token) {
-    console.error("[app.tsx bootstrap] no access_token in response:", JSON.stringify(tokenData));
+    await writeTrace(db, "no_token", { tokenData: JSON.stringify(tokenData).slice(0, 500) });
     return;
   }
 
-  // 3. Save to Firestore as offline session
   const offlineId = `offline_${shop}`;
   await col.doc(offlineId).set({
     id: offlineId,
@@ -74,7 +87,7 @@ async function bootstrapOfflineSession(shop: string, sessionToken: string): Prom
     scope: tokenData.scope || "",
     accessToken: tokenData.access_token,
   });
-  console.log("[app.tsx bootstrap] ✅ offline session saved for", shop);
+  await writeTrace(db, "saved", { offlineId, scope: tokenData.scope });
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
