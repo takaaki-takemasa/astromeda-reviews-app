@@ -22,6 +22,7 @@ import {
   Tabs, Select, Button, Pagination, Banner, Popover, ActionList, TextField,
 } from "@shopify/polaris";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import type { ShouldRevalidateFunction } from "@remix-run/react";
 import { useLoaderData, useSearchParams, useFetcher, Form } from "@remix-run/react";
 import { useState, useCallback, useMemo } from "react";
 import { authenticate } from "../shopify.server";
@@ -338,6 +339,18 @@ async function fetchTokensAndReviews(admin: any): Promise<{ tokens: Map<string, 
 // ──────────────────────────────────────────────────────────────────
 export const config = { maxDuration: 60 };
 
+// Skip loader re-run after action submit (send_request) to avoid full re-fetch (15s+)
+// Re-fetch only on explicit URL navigation (filter/sort/page change).
+export const shouldRevalidate: ShouldRevalidateFunction = ({ formData, defaultShouldRevalidate, currentUrl, nextUrl }) => {
+  const intent = formData?.get?.("intent");
+  if (intent === "send_request") {
+    // Same URL = same filter/sort/page → skip full re-fetch.
+    // The clicked row will be visually updated by Optimistic UI.
+    return false;
+  }
+  return defaultShouldRevalidate;
+};
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
   const url = new URL(request.url);
@@ -351,8 +364,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // 期間スコープ: デフォルト過去180日 (UI で変更可能)
   const sortBy = (url.searchParams.get("sort_by") || "fulfilled_at").toLowerCase();
   const sortDir = (url.searchParams.get("sort_dir") || "asc").toLowerCase() === "asc" ? "asc" : "desc";
-  const daysParam = parseInt(url.searchParams.get("days") || "90", 10);
-  const days = isNaN(daysParam) || daysParam < 1 ? 90 : Math.min(daysParam, 9999);
+  const daysParam = parseInt(url.searchParams.get("days") || "30", 10);
+  const days = isNaN(daysParam) || daysParam < 1 ? 30 : Math.min(daysParam, 9999);
   const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
   console.log("[SHIPMENTS] loader start", { days, sinceIso });
   // 先に発送データを取得し、そこから出てくる商品 GID だけ IP map を構築する
@@ -633,6 +646,8 @@ export default function ShipmentsTab() {
   const [searchParams, setSearchParams] = useSearchParams();
   const fetcher = useFetcher<typeof action>();
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
+  // Optimistic UI: rows that user clicked 今すぐ依頼 — instantly mark as requested (依頼済)
+  const [optimisticRequestedKeys, setOptimisticRequestedKeys] = useState<Set<string>>(new Set());
 
   // IP セレクター: 上位 4 IP は Tab、残りは Popover + 検索可能 ActionList
   const TOP_IP_COUNT = 2;
@@ -681,8 +696,8 @@ export default function ShipmentsTab() {
 
   // Period filter (発送日範囲) - CEO 要望
   const periodOptions = [
-    { label: "過去30日 (高速)", value: "30" },
-    { label: "過去90日 (デフォルト)", value: "90" },
+    { label: "過去30日 (デフォルト・高速)", value: "30" },
+    { label: "過去90日", value: "90" },
     { label: "過去180日", value: "180" },
     { label: "過去365日", value: "365" },
     { label: "過去2年", value: "730" },
@@ -735,6 +750,8 @@ export default function ShipmentsTab() {
 
   // Send individual request
   const sendRequest = useCallback((row: ShipmentRow) => {
+    // Optimistic UI: instantly flip the row to 依頼済 (visual feedback < 100ms)
+    setOptimisticRequestedKeys((prev) => new Set([...prev, row.key]));
     const fd = new FormData();
     fd.set("intent", "send_request");
     fd.set("order_id", row.order_id.replace("#", ""));
@@ -829,7 +846,7 @@ export default function ShipmentsTab() {
               </InlineStack>
               <InlineStack gap="400" align="space-between" blockAlign="end" wrap={false}>
                 <InlineStack gap="300" blockAlign="end">
-                  <Select label="発送日範囲" options={periodOptions} value={String(filters.days || 90)} onChange={handlePeriodChange} />
+                  <Select label="発送日範囲" options={periodOptions} value={String(filters.days || 30)} onChange={handlePeriodChange} />
                   <Select label="商品カテゴリ" options={categoryOptions} value={filters.category} onChange={handleCategoryChange} />
                 </InlineStack>
                 <InlineStack gap="200" blockAlign="center">
@@ -906,9 +923,11 @@ export default function ShipmentsTab() {
                       </IndexTable.Cell>
                       <IndexTable.Cell>
                         <BlockStack gap="100">
-                          <StateBadge state={r.state} />
-                          {r.state === "pending_request" ? (
-                            <Button size="slim" variant="primary" onClick={() => sendRequest(r)} loading={fetcher.state !== "idle"}>📧 今すぐ依頼</Button>
+                          <StateBadge state={optimisticRequestedKeys.has(r.key) ? "requested" : r.state} />
+                          {optimisticRequestedKeys.has(r.key) ? (
+                            <Text as="span" variant="bodySm" tone="success">✓ 送信しました</Text>
+                          ) : r.state === "pending_request" ? (
+                            <Button size="slim" variant="primary" onClick={() => sendRequest(r)} loading={fetcher.state !== "idle" && fetcher.formData?.get("order_id") === r.order_id.replace("#", "")}>📧 今すぐ依頼</Button>
                           ) : r.state === "requested" ? (
                             <Text as="span" variant="bodySm" tone="subdued">{fmtDate(r.request_sent_at || "")} 依頼済</Text>
                           ) : (
