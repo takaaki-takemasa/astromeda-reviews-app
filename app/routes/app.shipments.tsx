@@ -1130,6 +1130,65 @@ export default function ShipmentsTab() {
           </Card>
         </Layout.Section>
       </Layout>
+
+      {/* Send confirmation modal — show subject/body/recipient/coupon before actually sending */}
+      <Modal
+        open={previewRow !== null}
+        onClose={closePreview}
+        title={previewRow ? `✉️ 送信内容の確認 — ${previewRow.customer_name || previewRow.customer_email}` : "送信内容の確認"}
+        primaryAction={previewData && !previewData.error && !previewLoading ? {
+          content: "送信する",
+          onAction: confirmSend,
+          loading: sending,
+          disabled: sending,
+        } : undefined}
+        secondaryActions={[{
+          content: "キャンセル",
+          onAction: closePreview,
+          disabled: sending,
+        }]}
+      >
+        <Modal.Section>
+          {previewLoading ? (
+            <InlineStack gap="200" blockAlign="center"><Spinner size="small" /><Text as="span" variant="bodyMd">プレビュー読み込み中…</Text></InlineStack>
+          ) : previewData?.error ? (
+            <Banner tone="critical">{previewData.error}</Banner>
+          ) : previewData ? (
+            <BlockStack gap="400">
+              <Banner tone="warning">
+                <Text as="p" variant="bodyMd">この内容で「送信する」を押すと <strong>実際にメールが {previewData.to} へ送信されます</strong>。キャンセル不可です。間違いがあれば「キャンセル」を押してください。</Text>
+              </Banner>
+              <BlockStack gap="200">
+                <Text as="p" variant="bodySm" tone="subdued">宛先</Text>
+                <Text as="p" variant="bodyMd" fontWeight="semibold">{previewData.to}</Text>
+              </BlockStack>
+              <BlockStack gap="200">
+                <Text as="p" variant="bodySm" tone="subdued">お客様名</Text>
+                <Text as="p" variant="bodyMd">{previewData.customerName || "(未設定)"}</Text>
+              </BlockStack>
+              <BlockStack gap="200">
+                <Text as="p" variant="bodySm" tone="subdued">対象商品</Text>
+                <Text as="p" variant="bodyMd">{previewData.productTitle}</Text>
+              </BlockStack>
+              <BlockStack gap="200">
+                <Text as="p" variant="bodySm" tone="subdued">件名</Text>
+                <Text as="p" variant="bodyMd" fontWeight="semibold">{previewData.subject}</Text>
+              </BlockStack>
+              <BlockStack gap="200">
+                <Text as="p" variant="bodySm" tone="subdued">本文プレビュー</Text>
+                <div style={{ background: "#f6f6f7", borderRadius: 8, padding: 16, whiteSpace: "pre-wrap", fontFamily: "monospace", fontSize: 13, maxHeight: 320, overflow: "auto", border: "1px solid #e1e3e5" }}>
+                  {previewData.textBody}
+                </div>
+              </BlockStack>
+              <BlockStack gap="100">
+                <Text as="p" variant="bodySm" tone="subdued">クーポン訴求</Text>
+                <Text as="p" variant="bodyMd">🎁 {previewData.couponPitch}</Text>
+              </BlockStack>
+              <Text as="p" variant="bodyXs" tone="subdued">※ レビューURL内のトークンは送信時に新規発行されます</Text>
+            </BlockStack>
+          ) : null}
+        </Modal.Section>
+      </Modal>
     </Page>
   );
 }
