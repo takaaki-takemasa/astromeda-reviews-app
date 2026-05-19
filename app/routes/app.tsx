@@ -6,41 +6,90 @@ import { NavMenu } from "@shopify/app-bridge-react";
 import polarisStyles from "@shopify/polaris/build/esm/styles.css?url";
 import brandTokensStyles from "../styles/brand-tokens.css?url";
 
-import { authenticate, sessionStorage } from "../shopify.server";
-import { Session } from "@shopify/shopify-api";
+import { authenticate } from "../shopify.server";
+import { Firestore } from "@google-cloud/firestore";
 
 export const links = () => [
   { rel: "stylesheet", href: polarisStyles },
   { rel: "stylesheet", href: brandTokensStyles },
 ];
 
+async function bootstrapOfflineSession(shop: string, sessionToken: string): Promise<void> {
+  const apiKey = process.env.SHOPIFY_API_KEY;
+  const apiSecret = process.env.SHOPIFY_API_SECRET;
+  if (!apiKey || !apiSecret || !shop || !sessionToken) return;
+
+  // 1. Check Firestore for existing offline session
+  const projectId = process.env.GCP_PROJECT_ID;
+  const keyJson = process.env.GCP_SERVICE_ACCOUNT_KEY;
+  if (!projectId || !keyJson) return;
+  let credentials: any;
+  try { credentials = JSON.parse(keyJson); } catch { return; }
+  const db = new Firestore({ projectId, credentials });
+  const col = db.collection("shopify_sessions");
+
+  const existing = await col.where("shop", "==", shop).get();
+  const hasOffline = existing.docs.some((d: any) => {
+    const data = d.data();
+    return data.isOnline === false && data.accessToken;
+  });
+  if (hasOffline) {
+    console.log("[app.tsx bootstrap] offline session already exists for", shop);
+    return;
+  }
+
+  // 2. Token exchange: session token (online) → offline access token
+  const exchangeRes = await fetch(`https://${shop}/admin/oauth/access_token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      client_id: apiKey,
+      client_secret: apiSecret,
+      grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
+      subject_token: sessionToken,
+      subject_token_type: "urn:ietf:params:oauth:token-type:id_token",
+      requested_token_type: "urn:shopify:params:oauth:token-type:offline-access-token",
+    }),
+  });
+
+  if (!exchangeRes.ok) {
+    const errText = await exchangeRes.text();
+    console.error("[app.tsx bootstrap] token exchange failed:", exchangeRes.status, errText.slice(0, 300));
+    return;
+  }
+
+  const tokenData = (await exchangeRes.json()) as { access_token?: string; scope?: string };
+  if (!tokenData.access_token) {
+    console.error("[app.tsx bootstrap] no access_token in response:", JSON.stringify(tokenData));
+    return;
+  }
+
+  // 3. Save to Firestore as offline session
+  const offlineId = `offline_${shop}`;
+  await col.doc(offlineId).set({
+    id: offlineId,
+    shop,
+    state: "",
+    isOnline: false,
+    scope: tokenData.scope || "",
+    accessToken: tokenData.access_token,
+  });
+  console.log("[app.tsx bootstrap] ✅ offline session saved for", shop);
+}
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
-  // Bootstrap: ensure an offline session exists in Firestore for this shop.
-  // unstable_newEmbeddedAuthStrategy uses token-exchange which gives us an
-  // access token that is valid for offline (per-shop) admin calls. If no
-  // offline session is stored yet, save one so /proxy/submit's
-  // unauthenticated.admin(SHOP) can find it.
+  // Best-effort: ensure an offline access token exists so /proxy/submit can use admin GraphQL.
   try {
-    if (session?.shop && session?.accessToken) {
-      const existing = await sessionStorage.findSessionsByShop(session.shop);
-      const hasOffline = existing.some((s) => !s.isOnline);
-      if (!hasOffline) {
-        const offlineId = `offline_${session.shop}`;
-        const offlineSession = new Session({
-          id: offlineId,
-          shop: session.shop,
-          state: session.state || "",
-          isOnline: false,
-          scope: session.scope || "",
-          accessToken: session.accessToken,
-        });
-        await sessionStorage.storeSession(offlineSession);
-        console.log("[app.tsx] bootstrapped offline session for", session.shop);
+    if (session?.shop) {
+      const sessionTokenHeader = request.headers.get("authorization") || "";
+      const sessionToken = sessionTokenHeader.replace(/^Bearer\s+/i, "");
+      if (sessionToken) {
+        await bootstrapOfflineSession(session.shop, sessionToken);
       }
     }
   } catch (e: any) {
-    console.error("[app.tsx] offline-session bootstrap failed:", e?.message || e);
+    console.error("[app.tsx] bootstrap exception:", e?.message || e);
   }
   return { apiKey: process.env.SHOPIFY_API_KEY || "" };
 };
