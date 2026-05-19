@@ -6,7 +6,8 @@ import { NavMenu } from "@shopify/app-bridge-react";
 import polarisStyles from "@shopify/polaris/build/esm/styles.css?url";
 import brandTokensStyles from "../styles/brand-tokens.css?url";
 
-import { authenticate } from "../shopify.server";
+import { authenticate, sessionStorage } from "../shopify.server";
+import { Session } from "@shopify/shopify-api";
 
 export const links = () => [
   { rel: "stylesheet", href: polarisStyles },
@@ -14,7 +15,33 @@ export const links = () => [
 ];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  await authenticate.admin(request);
+  const { session } = await authenticate.admin(request);
+  // Bootstrap: ensure an offline session exists in Firestore for this shop.
+  // unstable_newEmbeddedAuthStrategy uses token-exchange which gives us an
+  // access token that is valid for offline (per-shop) admin calls. If no
+  // offline session is stored yet, save one so /proxy/submit's
+  // unauthenticated.admin(SHOP) can find it.
+  try {
+    if (session?.shop && session?.accessToken) {
+      const existing = await sessionStorage.findSessionsByShop(session.shop);
+      const hasOffline = existing.some((s) => !s.isOnline);
+      if (!hasOffline) {
+        const offlineId = `offline_${session.shop}`;
+        const offlineSession = new Session({
+          id: offlineId,
+          shop: session.shop,
+          state: session.state || "",
+          isOnline: false,
+          scope: session.scope || "",
+          accessToken: session.accessToken,
+        });
+        await sessionStorage.storeSession(offlineSession);
+        console.log("[app.tsx] bootstrapped offline session for", session.shop);
+      }
+    }
+  } catch (e: any) {
+    console.error("[app.tsx] offline-session bootstrap failed:", e?.message || e);
+  }
   return { apiKey: process.env.SHOPIFY_API_KEY || "" };
 };
 
