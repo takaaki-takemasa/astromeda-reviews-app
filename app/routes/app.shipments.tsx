@@ -206,9 +206,9 @@ async function fetchAllFulfilledLineItems(admin: any, sinceIso: string): Promise
   let skippedNoProduct = 0;
   let skippedDup = 0;
   let skippedNonParent = 0;
-  const orderFetchDeadline = Date.now() + 40000; // 40s budget for orders fetch (10000 → cold start 余裕)
+  const orderFetchDeadline = Date.now() + 35000; // 35s budget (Vercel 60s 制限に余裕)
   let ordersPartial = false;
-  while (safety < 50) {  // 5000件上限 (50 * 100) - 全期間対応
+  while (safety < 20) {  // 2000件上限 (20 * 100) - perf safety
     if (Date.now() > orderFetchDeadline) {
       ordersPartial = true;
       console.warn("[shipments] orders fetch deadline hit, returning partial data", { fetchedOrders: safety * 250 });
@@ -351,8 +351,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // 期間スコープ: デフォルト過去180日 (UI で変更可能)
   const sortBy = (url.searchParams.get("sort_by") || "fulfilled_at").toLowerCase();
   const sortDir = (url.searchParams.get("sort_dir") || "asc").toLowerCase() === "asc" ? "asc" : "desc";
-  const daysParam = parseInt(url.searchParams.get("days") || "9999", 10);
-  const days = isNaN(daysParam) || daysParam < 1 ? 9999 : Math.min(daysParam, 9999);
+  const daysParam = parseInt(url.searchParams.get("days") || "90", 10);
+  const days = isNaN(daysParam) || daysParam < 1 ? 90 : Math.min(daysParam, 9999);
   const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
   console.log("[SHIPMENTS] loader start", { days, sinceIso });
   // 先に発送データを取得し、そこから出てくる商品 GID だけ IP map を構築する
@@ -681,12 +681,12 @@ export default function ShipmentsTab() {
 
   // Period filter (発送日範囲) - CEO 要望
   const periodOptions = [
-    { label: "過去30日", value: "30" },
-    { label: "過去90日", value: "90" },
+    { label: "過去30日 (高速)", value: "30" },
+    { label: "過去90日 (デフォルト)", value: "90" },
     { label: "過去180日", value: "180" },
     { label: "過去365日", value: "365" },
     { label: "過去2年", value: "730" },
-    { label: "全期間", value: "9999" },
+    { label: "全期間 (重い・タイムアウト注意)", value: "9999" },
   ];
   const handlePeriodChange = useCallback((val: string) => {
     const next = new URLSearchParams(searchParams);
@@ -829,7 +829,7 @@ export default function ShipmentsTab() {
               </InlineStack>
               <InlineStack gap="400" align="space-between" blockAlign="end" wrap={false}>
                 <InlineStack gap="300" blockAlign="end">
-                  <Select label="発送日範囲" options={periodOptions} value={String(filters.days || 9999)} onChange={handlePeriodChange} />
+                  <Select label="発送日範囲" options={periodOptions} value={String(filters.days || 90)} onChange={handlePeriodChange} />
                   <Select label="商品カテゴリ" options={categoryOptions} value={filters.category} onChange={handleCategoryChange} />
                 </InlineStack>
                 <InlineStack gap="200" blockAlign="center">
