@@ -72,6 +72,11 @@ const TEMPLATE_QUERY = `#graphql
           startsAt
           endsAt
           combinesWith { productDiscounts orderDiscounts shippingDiscounts }
+          customerSelection {
+            __typename
+            ... on DiscountCustomerAll { allCustomers }
+            ... on DiscountCustomers { customers { id } }
+          }
           minimumRequirement {
             ... on DiscountMinimumSubtotal { greaterThanOrEqualToSubtotal { amount } }
             ... on DiscountMinimumQuantity { greaterThanOrEqualToQuantity }
@@ -201,6 +206,18 @@ function buildInputFromTemplate(
 
   const combines = template?.combinesWith || { productDiscounts: false, orderDiscounts: false, shippingDiscounts: false };
 
+  // context (customer eligibility) - copy from template
+  const sel = template?.customerSelection;
+  let context: any = { all: "ALL" }; // default
+  if (sel) {
+    if (sel.__typename === "DiscountCustomers" && Array.isArray(sel.customers) && sel.customers.length > 0) {
+      context = { customers: { add: sel.customers.map((c: any) => c.id) } };
+    } else if (sel.__typename === "DiscountCustomerAll" && sel.allCustomers === true) {
+      context = { all: "ALL" };
+    }
+    // DiscountCustomerSegments: not handled for now, fallback to all
+  }
+
   return {
     title: `Review Reward - ${reviewerName} - ${newCode}`,
     code: newCode,
@@ -208,10 +225,9 @@ function buildInputFromTemplate(
     endsAt,
     usageLimit: 1, // CEO 要件: 1 コード = 1 回のみ
     appliesOncePerCustomer: true, // 安全装置: 同一顧客の二重使用防止
+    context,
     customerGets,
     combinesWith: combines,
-    appliesOnOneTimePurchase: template?.customerGets?.appliesOnOneTimePurchase ?? true,
-    appliesOnSubscription: template?.customerGets?.appliesOnSubscription ?? false,
     ...(hasMin ? { minimumRequirement } : {}),
   };
 }
