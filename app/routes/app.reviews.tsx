@@ -146,10 +146,10 @@ const LIST_QUERY_LITE = `#graphql
         node {
           id
           updatedAt
-          fields {
-            key
-            value
-          }
+          status: field(key: "status") { value }
+          rating: field(key: "rating") { value }
+          posted_at: field(key: "posted_at") { value }
+          approved_at: field(key: "approved_at") { value }
         }
         cursor
       }
@@ -355,7 +355,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const liteAll: LiteRow[] = [];
   let cursor: string | null = null;
   let safety = 0;
+  const passOneDeadline = Date.now() + 45000; // 45s budget for Pass 1
+  let partialData = false;
   while (safety < 50) {
+    if (Date.now() > passOneDeadline) {
+      partialData = true;
+      console.warn("[reviews loader] Pass 1 deadline hit, returning partial data", { fetched: liteAll.length });
+      break;
+    }
     const res: any = await admin.graphql(LIST_QUERY_LITE, {
       variables: { first: 250, after: cursor },
     });
@@ -363,14 +370,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const edges = json.data?.metaobjects?.edges ?? [];
     for (const edge of edges) {
       const node = edge.node;
-      const fields: Array<{key:string; value:string}> = node.fields || [];
-      const fmap = new Map(fields.map((f) => [f.key, f.value]));
       liteAll.push({
         id: node.id,
-        status: fmap.get("status") || "pending",
-        rating: Number(fmap.get("rating") || 0),
-        posted_at: fmap.get("posted_at") || "",
-        approved_at: fmap.get("approved_at") || "",
+        status: node.status?.value || "pending",
+        rating: Number(node.rating?.value || 0),
+        posted_at: node.posted_at?.value || "",
+        approved_at: node.approved_at?.value || "",
         updatedAt: node.updatedAt || "",
       });
     }
@@ -461,6 +466,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     },
     tabCounts,
     sort,
+    partialData,
   };
 };
 
@@ -1997,7 +2003,7 @@ function ReviewStorefrontPreview({ review, productImage, productTitle }: { revie
 // Main component
 // ─────────────────────────────────────────────
 export default function ReviewsTab() {
-  const { tab, reviews, pageInfo, shop, pagination, tabCounts, sort } = useLoaderData<typeof loader>();
+  const { tab, reviews, pageInfo, shop, pagination, tabCounts, sort, partialData } = useLoaderData<typeof loader>() as any;
 
   // pagination bar inline JSX (上段+下段で使い回し)
   // この変数は ReviewsTab 内で定義する必要がある (pagination が scope に入っているため)
@@ -2809,6 +2815,15 @@ export default function ReviewsTab() {
     >
       <Layout>
         <Layout.Section>
+          {partialData ? (
+            <Banner tone="warning" title="取得タイムアウト: 一部のレビューのみ表示中">
+              <Text as="p" variant="bodyMd">
+                Vercel の処理時間制限を回避するため、最初の数百件のみ取得しました。
+                ページや並び順を変えても再ログイン画面は出ません。
+                時間をおいて再読み込みすると最新の全件が反映されます。
+              </Text>
+            </Banner>
+          ) : null}
           {fetcher.data?.ok && fetcher.data.updated && fetcher.data.updated > 0 ? (
             <Banner tone="success" title={`${fetcher.data.updated} 件を更新しました`} onDismiss={() => {}} />
           ) : null}
