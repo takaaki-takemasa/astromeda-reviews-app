@@ -24,7 +24,7 @@ import {
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import type { ShouldRevalidateFunction } from "@remix-run/react";
 import { useLoaderData, useSearchParams, useFetcher, Form } from "@remix-run/react";
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { authenticate } from "../shopify.server";
 import { appendAuditLogSafe } from "../lib/audit-log";
 import { sendReviewRequestEmail } from "../lib/resend-email";
@@ -931,16 +931,18 @@ export default function ShipmentsTab() {
     closePreview();
   }, [previewRow, fetcher, closePreview]);
 
-  // Sync preview fetcher data into local state when it arrives
-  if (previewFetcher.state === "idle" && previewFetcher.data && previewLoading) {
-    const d: any = previewFetcher.data;
-    if (d?.ok && d?.preview) {
-      setPreviewData(d.preview);
-    } else {
-      setPreviewData({ error: d?.error || "プレビュー取得失敗" });
+  // Sync preview fetcher result into local state
+  useEffect(() => {
+    if (previewFetcher.state === "idle" && previewFetcher.data) {
+      const d: any = previewFetcher.data;
+      if (d?.ok && d?.preview) {
+        setPreviewData(d.preview);
+      } else if (d?.intent === "preview_request" || d?.error) {
+        setPreviewData({ error: d?.error || "プレビュー取得失敗" });
+      }
+      setPreviewLoading(false);
     }
-    setPreviewLoading(false);
-  }
+  }, [previewFetcher.state, previewFetcher.data]);
 
   // Flash on action success/failure
   if (fetcher.state === "idle" && fetcher.data?.intent === "send_request" && flashMessage === null) {
