@@ -613,7 +613,7 @@ export default function ShipmentsTab() {
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
 
   // IP セレクター: 上位 4 IP は Tab、残りは Popover + 検索可能 ActionList
-  const TOP_IP_COUNT = 4;
+  const TOP_IP_COUNT = 2;
   const topIps = ipFacets.slice(0, TOP_IP_COUNT);
   const restIps = ipFacets.slice(TOP_IP_COUNT);
   const allTabs = [
