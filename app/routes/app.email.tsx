@@ -396,7 +396,7 @@ export default function EmailTab() {
     "customer.first_name": "山田",
     "customer.last_name": "太郎",
     "customer.email": "yamada@example.com",
-    "review_url": "https://shop.mining-base.co.jp/apps/reviews-1/submit?token=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+    "review_url": "https://shop.mining-base.co.jp/apps/reviews/submit?token=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
     "order.id": "1234567890",
     "order.name": "#10001",
     "shop.name": "ASTROMEDA",

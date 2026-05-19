@@ -37,3 +37,8 @@ redirect_urls = [
 
 [webhooks]
 api_version = "2025-01"
+
+[app_proxy]
+url = "https://astromeda-reviews-app.vercel.app/proxy"
+subpath = "reviews"
+prefix = "apps"

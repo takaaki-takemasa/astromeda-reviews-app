@@ -27,7 +27,7 @@ import { enforceRateLimit, RATE_LIMITS } from "../lib/rate-limit";
 /**
  * Customer-facing review submission form via App Proxy.
  *
- * URL: https://shop.mining-base.co.jp/apps/reviews-1/submit?token=XXX
+ * URL: https://shop.mining-base.co.jp/apps/reviews/submit?token=XXX
  *      → Shopify proxies to /proxy/submit?token=XXX (this route)
  *
  * Phase K-01〜K-07 で扱う論点:
@@ -268,7 +268,7 @@ export default function PublicReviewSubmit() {
         {token.customer_name || "お客様"} へ・3 分でご感想をお寄せください。
       </p>
 
-      <form method="post" action={`/apps/reviews-1/submit?token=${encodeURIComponent(token.token)}`}>
+      <form method="post" action={`/apps/reviews/submit?token=${encodeURIComponent(token.token)}`}>
         <input type="hidden" name="token" value={token.token} />
 
         <label style={fieldLabel}>評価 (必須)</label>
