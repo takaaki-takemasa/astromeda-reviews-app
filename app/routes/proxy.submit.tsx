@@ -123,23 +123,50 @@ function detectNgWords(text: string): string[] {
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  enforceRateLimit(request, RATE_LIMITS.PUBLIC_AUTH);
-  // authenticate.public.appProxy verifies Shopify's signature query param
-  const { admin } = await authenticate.public.appProxy(request);
-  if (!admin) {
-    throw new Response("App Proxy authentication failed", { status: 401 });
+  try {
+    enforceRateLimit(request, RATE_LIMITS.PUBLIC_AUTH);
+
+    const url = new URL(request.url);
+    const tokenValue = url.searchParams.get("token") || "";
+
+    // Step 1: validate token UUID format BEFORE auth (cheap check)
+    if (!isValidUuid(tokenValue)) {
+      return { state: "invalid_token" as const, message: "リンクが正しくありません。メールに記載されたリンクをご確認ください。" };
+    }
+
+    // Step 2: authenticate via App Proxy HMAC signature
+    let admin: any = null;
+    try {
+      const result = await authenticate.public.appProxy(request);
+      admin = result.admin;
+    } catch (authErr: any) {
+      console.error("[proxy.submit/loader] auth threw:", authErr?.message || authErr, "url=", request.url.slice(0, 200));
+      return { state: "error" as const, message: "Shopify App Proxy 認証に失敗しました。メールのリンクから再度お試しください。", diag: `auth: ${authErr?.message || "unknown"}` };
+    }
+
+    if (!admin) {
+      console.error("[proxy.submit/loader] admin missing — no Shopify session for this shop");
+      return { state: "error" as const, message: "Shopify セッションが見つかりません。", diag: "no_admin" };
+    }
+
+    // Step 3: token lookup
+    let token: TokenData | null = null;
+    try {
+      token = await findTokenByValue(admin, tokenValue);
+    } catch (qErr: any) {
+      console.error("[proxy.submit/loader] token query failed:", qErr?.message || qErr);
+      return { state: "error" as const, message: "トークン照会に失敗しました。少し待ってから再度お試しください。", diag: `query: ${qErr?.message || "unknown"}` };
+    }
+
+    const v = validateToken(token);
+    if (!v.ok) {
+      return { state: v.reason as "missing" | "expired" | "used", message: v.reason === "expired" ? "このレビュー招待の有効期限が切れています。" : v.reason === "used" ? "このリンクは既にご利用済です。お一人様 1 回までの投稿となります。" : "リンクが正しくありません。" };
+    }
+    return { state: "ready" as const, token: v.token };
+  } catch (outer: any) {
+    console.error("[proxy.submit/loader] unexpected error:", outer?.message || outer, outer?.stack?.slice(0, 500));
+    return { state: "error" as const, message: "予期しないエラーが発生しました。", diag: `outer: ${outer?.message || "unknown"}` };
   }
-  const url = new URL(request.url);
-  const tokenValue = url.searchParams.get("token") || "";
-  if (!isValidUuid(tokenValue)) {
-    return { state: "invalid_token" as const, message: "リンクが正しくありません。メールに記載されたリンクをご確認ください。" };
-  }
-  const token = await findTokenByValue(admin, tokenValue);
-  const v = validateToken(token);
-  if (!v.ok) {
-    return { state: v.reason as "missing" | "expired" | "used", message: v.reason === "expired" ? "このレビュー招待の有効期限が切れています。" : v.reason === "used" ? "このリンクは既にご利用済です。お一人様 1 回までの投稿となります。" : "リンクが正しくありません。" };
-  }
-  return { state: "ready" as const, token: v.token };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -254,6 +281,9 @@ export default function PublicReviewSubmit() {
       <PublicShell>
         <h1 style={{ margin: 0, fontSize: 22 }}>レビュー投稿リンク</h1>
         <p style={{ color: "#475569", lineHeight: 1.7 }}>{data.message}</p>
+        {(data as any).diag ? (
+          <p style={{ color: "#9ca3af", fontSize: 12, fontFamily: "monospace", background: "#f9fafb", padding: 8, borderRadius: 4 }}>diag: {(data as any).diag}</p>
+        ) : null}
         <a href="https://shop.mining-base.co.jp/" style={cta}>ASTROMEDA ストアへ戻る</a>
       </PublicShell>
     );
@@ -333,3 +363,30 @@ function PublicShell({ children }: { children: React.ReactNode }) {
 const fieldLabel: React.CSSProperties = { display: "block", marginTop: 16, marginBottom: 6, fontWeight: 600, fontSize: 13, color: "#1e293b" };
 const fieldInput: React.CSSProperties = { display: "block", width: "100%", padding: "10px 12px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 16, fontFamily: "inherit", boxSizing: "border-box" };
 const cta: React.CSSProperties = { display: "inline-block", marginTop: 20, padding: "12px 24px", background: "#0d9488", color: "#fff", textDecoration: "none", borderRadius: 8, fontWeight: 500, fontSize: 16, minHeight: 44, textAlign: "center", lineHeight: 1.4 };
+
+
+import { useRouteError, isRouteErrorResponse } from "@remix-run/react";
+
+export function ErrorBoundary() {
+  const err = useRouteError();
+  const msg = isRouteErrorResponse(err)
+    ? `HTTP ${err.status}: ${err.data || err.statusText}`
+    : (err as any)?.message || String(err);
+  return (
+    <html>
+      <head>
+        <meta charSet="utf-8" />
+        <title>レビュー投稿フォームエラー</title>
+        <style>{`body{font-family:-apple-system,sans-serif;margin:0;padding:40px 20px;background:#f9fafb;color:#111827}.card{max-width:520px;margin:0 auto;background:white;border-radius:12px;padding:32px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}h1{margin:0 0 16px 0;font-size:22px}p{line-height:1.7;color:#475569}.diag{color:#9ca3af;font-size:12px;font-family:monospace;background:#f9fafb;padding:8px;border-radius:4px}`}</style>
+      </head>
+      <body>
+        <div className="card">
+          <h1>レビュー投稿フォームを開けません</h1>
+          <p>申し訳ございません。一時的なエラーが発生しています。少し待ってから再度メールのリンクをクリックしてください。</p>
+          <p className="diag">{msg}</p>
+          <p><a href="https://shop.mining-base.co.jp/">ASTROMEDA ストアへ戻る</a></p>
+        </div>
+      </body>
+    </html>
+  );
+}
