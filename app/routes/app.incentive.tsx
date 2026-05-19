@@ -166,7 +166,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // shop handle for absolute Shopify admin deep-links inside iframe
   const shopHandle = (session?.shop || "").replace(".myshopify.com", "");
 
-  return { settings, coupons, stats: { totalIssued, totalUsed, usageRate }, shopifyDiscounts, discountFetchError, shopHandle, build_tag: "0e7411b+fallback" };
+  return { settings, coupons, stats: { totalIssued, totalUsed, usageRate }, shopifyDiscounts, discountFetchError, shopHandle };
 };
 
 export const headers: HeadersFunction = () => ({
@@ -489,7 +489,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 // UI
 // ──────────────────────────────────────────────────────────────────
 export default function IncentiveTab() {
-  const { settings, coupons, stats, shopifyDiscounts, discountFetchError, shopHandle, build_tag } = useLoaderData<typeof loader>() as any;
+  const { settings, coupons, stats, shopifyDiscounts, discountFetchError, shopHandle } = useLoaderData<typeof loader>() as any;
   const [searchParams, setSearchParams] = useSearchParams();
   const fetcher = useFetcher<typeof action>();
   const [tabIdx, setTabIdx] = useState(parseInt(searchParams.get("tab") || "0", 10));
@@ -605,9 +605,6 @@ export default function IncentiveTab() {
               <Card>
                 <BlockStack gap="400">
                   <Text as="h2" variant="headingLg">クーポン設定</Text>
-                  <Banner tone="info">
-                    <Text as="p" variant="bodyMd">🔍 DEBUG: build=<strong>{build_tag || "OLD-CACHED"}</strong> / discounts=<strong>{(shopifyDiscounts || []).length}</strong> / err=<strong>{discountFetchError ? "YES" : "none"}</strong> / shop=<strong>{shopHandle || "?"}</strong></Text>
-                  </Banner>
                   <Banner tone="info">
                     <BlockStack gap="100">
                       <Text as="p" variant="bodyMd" fontWeight="semibold">Shopify ディスカウント管理と連携しています</Text>

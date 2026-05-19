@@ -159,6 +159,7 @@ export async function issueCouponForReview(admin: any, reviewGid: string): Promi
     const nowIso = new Date().toISOString();
     let bulkCreationId = "";
     let scopeError = "";
+    // Try merchant OAuth first
     try {
       const ares: any = await admin.graphql(REDEEM_CODE_BULK_ADD, {
         variables: { discountId: discountGid, codes: [{ code }] },
@@ -173,7 +174,33 @@ export async function issueCouponForReview(admin: any, reviewGid: string): Promi
       }
     } catch (e: any) {
       scopeError = e?.message || String(e);
-      console.error("[ISSUE-COUPON] bulkAdd exception", scopeError);
+      console.error("[ISSUE-COUPON] bulkAdd OAuth exception", scopeError);
+    }
+    // Fallback: offline admin token (when write_discounts scope not yet granted to embedded app)
+    if (!bulkCreationId && process.env.SHOPIFY_ADMIN_ACCESS_TOKEN) {
+      try {
+        const shop = process.env.PRODUCTION_SHOP_DOMAIN || "production-mining-base.myshopify.com";
+        const cleanQuery = REDEEM_CODE_BULK_ADD.replace(/^#graphql\s*/, "");
+        const r = await fetch(`https://${shop}/admin/api/2024-10/graphql.json`, {
+          method: "POST",
+          headers: { "X-Shopify-Access-Token": process.env.SHOPIFY_ADMIN_ACCESS_TOKEN, "Content-Type": "application/json" },
+          body: JSON.stringify({ query: cleanQuery, variables: { discountId: discountGid, codes: [{ code }] } }),
+        });
+        const fbj = await r.json();
+        const fbErrs = fbj?.data?.discountRedeemCodeBulkAdd?.userErrors ?? [];
+        if (fbErrs.length > 0) {
+          scopeError = "fallback also failed: " + fbErrs.map((e: any) => e.message).join(", ");
+          console.error("[ISSUE-COUPON] fallback bulkAdd userErrors", fbErrs);
+        } else {
+          bulkCreationId = fbj?.data?.discountRedeemCodeBulkAdd?.bulkCreation?.id || "";
+          if (bulkCreationId) {
+            scopeError = ""; // recovered
+            console.log("[ISSUE-COUPON] fallback bulkAdd succeeded via SHOPIFY_ADMIN_ACCESS_TOKEN", bulkCreationId);
+          }
+        }
+      } catch (fbErr: any) {
+        console.error("[ISSUE-COUPON] fallback bulkAdd exception", fbErr?.message);
+      }
     }
 
     // 6) Save coupon Metaobject (履歴用・常に保存)
