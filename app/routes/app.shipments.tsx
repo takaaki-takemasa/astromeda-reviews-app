@@ -19,7 +19,7 @@
 
 import {
   Page, Layout, Card, BlockStack, InlineStack, Text, EmptyState, IndexTable, Badge,
-  Tabs, Select, Button, Pagination, Banner, Popover, ActionList, TextField,
+  Tabs, Select, Button, Pagination, Banner, Popover, ActionList, TextField, Modal, Spinner,
 } from "@shopify/polaris";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import type { ShouldRevalidateFunction } from "@remix-run/react";
@@ -27,6 +27,7 @@ import { useLoaderData, useSearchParams, useFetcher, Form } from "@remix-run/rea
 import { useState, useCallback, useMemo } from "react";
 import { authenticate } from "../shopify.server";
 import { appendAuditLogSafe } from "../lib/audit-log";
+import { sendReviewRequestEmail } from "../lib/resend-email";
 
 // ──────────────────────────────────────────────────────────────────
 // 型
@@ -523,12 +524,80 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const formData = await request.formData();
   const intent = formData.get("intent") as string | null;
 
+  // ────────────────────────────────────────────────
+  // INTENT: preview_request — 送信前に件名・本文・宛先・クーポン情報を返す
+  // ────────────────────────────────────────────────
+  if (intent === "preview_request") {
+    const order_id = String(formData.get("order_id") || "");
+    const customer_email = String(formData.get("customer_email") || "").toLowerCase();
+    const customer_name = String(formData.get("customer_name") || "");
+    const product_title = String(formData.get("product_title") || "対象商品");
+    if (!order_id || !customer_email) return { ok: false, intent, error: "order_id and customer_email are required" };
+
+    // クーポン訴求文を Metaobject から取得
+    let couponPitch = "レビュー投稿で次回 10% OFF クーポンをプレゼント 🎁";
+    try {
+      const SETTINGS_QUERY = `#graphql
+        query GetIncentiveSettings {
+          metaobjectByHandle(handle: {type: "astromeda_incentive_settings", handle: "default"}) {
+            id
+            fields { key value }
+          }
+        }
+      `;
+      const sres: any = await admin.graphql(SETTINGS_QUERY);
+      const sj = await sres.json();
+      const settingsNode = sj?.data?.metaobjectByHandle;
+      if (settingsNode) {
+        for (const f of (settingsNode.fields || [])) {
+          if (f.key === "email_pitch" && f.value && f.value.trim()) {
+            couponPitch = f.value.trim();
+          }
+        }
+      }
+    } catch (_) { /* skip */ }
+
+    const subject = `[Astromeda] ${product_title} のレビューをお願いします`;
+    const previewReviewUrl = `https://${STORE_DOMAIN}/apps/reviews-1/submit?token=<送信時に発行>`;
+    const textBody = `${customer_name} 様
+
+先日ご利用いただいた「${product_title}」はいかがでしたでしょうか?
+
+お客様の声が次のお客様の購入判断を助け、より良い商品づくりにつながります。
+1分ほどでご投稿いただけます。
+
+▶ レビューを投稿する
+${previewReviewUrl}
+
+🎁 ${couponPitch}
+
+— Astromeda Reviews System`;
+
+    return {
+      ok: true,
+      intent,
+      preview: {
+        to: customer_email,
+        customerName: customer_name,
+        productTitle: product_title,
+        subject,
+        textBody,
+        couponPitch,
+        reviewUrlTemplate: previewReviewUrl,
+      },
+    };
+  }
+
+  // ────────────────────────────────────────────────
+  // INTENT: send_request — 実際に Resend でメール送信する
+  // ────────────────────────────────────────────────
   if (intent === "send_request") {
     const order_id = String(formData.get("order_id") || "");
     const customer_email = String(formData.get("customer_email") || "").toLowerCase();
     const customer_name = String(formData.get("customer_name") || "");
     const product_gid = String(formData.get("product_gid") || "");
-    if (!order_id || !customer_email) return { ok: false, error: "order_id and customer_email are required" };
+    const product_title = String(formData.get("product_title") || "対象商品");
+    if (!order_id || !customer_email) return { ok: false, error: "order_id and customer_email are required", intent };
 
     // 1. トークン発行
     const token = generateUuid();
@@ -565,7 +634,73 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       return { ok: false, error: tokenErrs[0]?.message || "token create failed", intent };
     }
 
-    // 2. send_queue へ即時送信 entry を作成
+    // 2. クーポン訴求文を Metaobject から取得
+    let couponPitch = "レビュー投稿で次回 10% OFF クーポンをプレゼント 🎁";
+    try {
+      const SETTINGS_QUERY = `#graphql
+        query GetIncentiveSettings {
+          metaobjectByHandle(handle: {type: "astromeda_incentive_settings", handle: "default"}) {
+            id
+            fields { key value }
+          }
+        }
+      `;
+      const sres: any = await admin.graphql(SETTINGS_QUERY);
+      const sj = await sres.json();
+      const settingsNode = sj?.data?.metaobjectByHandle;
+      if (settingsNode) {
+        for (const f of (settingsNode.fields || [])) {
+          if (f.key === "email_pitch" && f.value && f.value.trim()) {
+            couponPitch = f.value.trim();
+          }
+        }
+      }
+    } catch (_) { /* skip */ }
+
+    // 3. Resend で実際にメール送信 (これが Critical Path)
+    const sendResult = await sendReviewRequestEmail({
+      to: customer_email,
+      customerName: customer_name || "お客様",
+      productTitle: product_title,
+      reviewUrl: review_url,
+      couponPitch,
+    });
+
+    if (!sendResult.ok) {
+      // メール送信失敗時は queue に "failed" として記録 (再送可能)
+      const CREATE_QUEUE_FAIL = `#graphql
+        mutation CreateQueue($metaobject: MetaobjectCreateInput!) {
+          metaobjectCreate(metaobject: $metaobject) {
+            metaobject { id }
+            userErrors { field message code }
+          }
+        }
+      `;
+      await admin.graphql(CREATE_QUEUE_FAIL, {
+        variables: {
+          metaobject: {
+            type: "astromeda_review_email_queue",
+            fields: [
+              { key: "order_id", value: order_id },
+              { key: "email", value: customer_email },
+              { key: "customer_name", value: customer_name },
+              { key: "scheduled_at", value: new Date().toISOString() },
+              { key: "status", value: "failed" },
+              { key: "token_id", value: tokenId },
+              { key: "error_message", value: (sendResult.error || "unknown").slice(0, 500) },
+            ],
+          },
+        },
+      });
+      await appendAuditLogSafe({
+        admin, actor: session.shop, action: "review.request.send_failed", resource_id: tokenId,
+        resource_type: "astromeda_review_token", request,
+        metadata: { order_id, email: customer_email, product_gid, error: sendResult.error },
+      });
+      return { ok: false, intent, error: `メール送信失敗: ${sendResult.error}`, token, tokenId };
+    }
+
+    // 4. 送信成功: queue に "sent" として記録
     const CREATE_QUEUE = `#graphql
       mutation CreateQueue($metaobject: MetaobjectCreateInput!) {
         metaobjectCreate(metaobject: $metaobject) {
@@ -584,8 +719,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             { key: "email", value: customer_email },
             { key: "customer_name", value: customer_name },
             { key: "scheduled_at", value: nowIso },
-            { key: "status", value: "queued" },
+            { key: "status", value: "sent" },
             { key: "token_id", value: tokenId },
+            { key: "resend_id", value: sendResult.id || "" },
           ],
         },
       },
@@ -598,10 +734,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       resource_id: tokenId,
       resource_type: "astromeda_review_token",
       request,
-      metadata: { order_id, email: customer_email, product_gid, review_url, source: "admin-shipments-tab" },
+      metadata: { order_id, email: customer_email, product_gid, review_url, source: "admin-shipments-tab", resend_id: sendResult.id },
     });
 
-    return { ok: true, intent, token, tokenId, review_url };
+    return { ok: true, intent, token, tokenId, review_url, resend_id: sendResult.id };
   }
 
   return { ok: false, error: "unknown intent", intent };
@@ -648,6 +784,11 @@ export default function ShipmentsTab() {
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
   // Optimistic UI: rows that user clicked 今すぐ依頼 — instantly mark as requested (依頼済)
   const [optimisticRequestedKeys, setOptimisticRequestedKeys] = useState<Set<string>>(new Set());
+  // Modal: send confirmation
+  const [previewRow, setPreviewRow] = useState<ShipmentRow | null>(null);
+  const [previewData, setPreviewData] = useState<any | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [sending, setSending] = useState(false);
 
   // IP セレクター: 上位 4 IP は Tab、残りは Popover + 検索可能 ActionList
   const TOP_IP_COUNT = 2;
@@ -710,10 +851,11 @@ export default function ShipmentsTab() {
     setSearchParams(next);
   }, [searchParams, setSearchParams]);
 
-  // State tabs
+  // State tabs — derive counts: subtract optimistically flipped rows from 未依頼 and add to 依頼済
+  const optimisticDelta = optimisticRequestedKeys.size;
   const stateTabs = [
-    { id: "pending_request", content: `🔴 未依頼 (${stateCounts.pending_request})` },
-    { id: "requested", content: `🟡 依頼済 (${stateCounts.requested})` },
+    { id: "pending_request", content: `🔴 未依頼 (${Math.max(0, stateCounts.pending_request - optimisticDelta)})` },
+    { id: "requested", content: `🟡 依頼済 (${stateCounts.requested + optimisticDelta})` },
     { id: "reviewed", content: `🟢 レビュー済 (${stateCounts.reviewed})` },
   ];
   const stateTabIndex = Math.max(0, stateTabs.findIndex((t) => t.id === filters.state));
@@ -748,8 +890,44 @@ export default function ShipmentsTab() {
     setSearchParams(next);
   }, [searchParams, setSearchParams]);
 
-  // Send individual request
-  const sendRequest = useCallback((row: ShipmentRow) => {
+  // Open preview modal — fetches preview data from server (subject/body/recipient/coupon)
+  const openPreview = useCallback(async (row: ShipmentRow) => {
+    setPreviewRow(row);
+    setPreviewData(null);
+    setPreviewLoading(true);
+    try {
+      const fd = new FormData();
+      fd.set("intent", "preview_request");
+      fd.set("order_id", row.order_id.replace("#", ""));
+      fd.set("customer_email", row.customer_email);
+      fd.set("customer_name", row.customer_name);
+      fd.set("product_title", row.product_title);
+      const res = await fetch(window.location.pathname + window.location.search, { method: "POST", body: fd });
+      const json: any = await res.json();
+      if (json?.ok && json?.preview) {
+        setPreviewData(json.preview);
+      } else {
+        setPreviewData({ error: json?.error || "プレビュー取得失敗" });
+      }
+    } catch (e: any) {
+      setPreviewData({ error: e?.message || "プレビュー取得エラー" });
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, []);
+
+  const closePreview = useCallback(() => {
+    setPreviewRow(null);
+    setPreviewData(null);
+    setPreviewLoading(false);
+    setSending(false);
+  }, []);
+
+  // Actually send (called from modal "送信する" button)
+  const confirmSend = useCallback(() => {
+    if (!previewRow) return;
+    const row = previewRow;
+    setSending(true);
     // Optimistic UI: instantly flip the row to 依頼済 (visual feedback < 100ms)
     setOptimisticRequestedKeys((prev) => new Set([...prev, row.key]));
     const fd = new FormData();
@@ -758,13 +936,22 @@ export default function ShipmentsTab() {
     fd.set("customer_email", row.customer_email);
     fd.set("customer_name", row.customer_name);
     fd.set("product_gid", row.product_gid);
+    fd.set("product_title", row.product_title);
     fetcher.submit(fd, { method: "post" });
-  }, [fetcher]);
+    // close immediately for snappy UX; banner will show server result
+    closePreview();
+  }, [previewRow, fetcher, closePreview]);
 
-  // Flash on action success
-  if (fetcher.state === "idle" && fetcher.data?.ok && fetcher.data?.intent === "send_request" && flashMessage === null) {
-    setFlashMessage(`依頼を送信しました (token: ${(fetcher.data as any).token?.slice(0, 8)}...)`);
-    setTimeout(() => setFlashMessage(null), 4000);
+  // Flash on action success/failure
+  if (fetcher.state === "idle" && fetcher.data?.intent === "send_request" && flashMessage === null) {
+    if (fetcher.data?.ok) {
+      const d: any = fetcher.data;
+      setFlashMessage(`✅ メール送信完了 (Resend ID: ${(d.resend_id || "").slice(0, 8)}...)`);
+      setTimeout(() => setFlashMessage(null), 5000);
+    } else {
+      setFlashMessage(`❌ 送信失敗: ${(fetcher.data as any).error || "unknown"}`);
+      setTimeout(() => setFlashMessage(null), 8000);
+    }
   }
 
   return (
@@ -927,7 +1114,7 @@ export default function ShipmentsTab() {
                           {optimisticRequestedKeys.has(r.key) ? (
                             <Text as="span" variant="bodySm" tone="success">✓ 送信しました</Text>
                           ) : r.state === "pending_request" ? (
-                            <Button size="slim" variant="primary" onClick={() => sendRequest(r)} loading={fetcher.state !== "idle" && fetcher.formData?.get("order_id") === r.order_id.replace("#", "")}>📧 今すぐ依頼</Button>
+                            <Button size="slim" variant="primary" onClick={() => openPreview(r)} loading={fetcher.state !== "idle" && fetcher.formData?.get("order_id") === r.order_id.replace("#", "")}>📧 今すぐ依頼</Button>
                           ) : r.state === "requested" ? (
                             <Text as="span" variant="bodySm" tone="subdued">{fmtDate(r.request_sent_at || "")} 依頼済</Text>
                           ) : (
