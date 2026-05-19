@@ -169,7 +169,7 @@ interface LineItemTuple {
   fulfilled_at: string;
 }
 
-async function fetchAllFulfilledLineItems(admin: any, sinceIso: string): Promise<LineItemTuple[]> {
+async function fetchAllFulfilledLineItems(admin: any, sinceIso: string): Promise<{ tuples: LineItemTuple[]; partial: boolean }> {
   const ORDERS_QUERY = `#graphql
     query FulfilledOrders($first: Int!, $after: String, $q: String!) {
       orders(first: $first, after: $after, query: $q, sortKey: PROCESSED_AT, reverse: true) {
@@ -201,9 +201,16 @@ async function fetchAllFulfilledLineItems(admin: any, sinceIso: string): Promise
   const tuples: LineItemTuple[] = [];
   let cursor: string | null = null;
   let safety = 0;
-  while (safety < 30) {  // 1500件上限 (30 * 50) - 全期間まで対応
+  const orderFetchDeadline = Date.now() + 50000; // 50s budget for orders fetch
+  let ordersPartial = false;
+  while (safety < 30) {  // 7500件上限 (30 * 250) - 全期間まで対応
+    if (Date.now() > orderFetchDeadline) {
+      ordersPartial = true;
+      console.warn("[shipments] orders fetch deadline hit, returning partial data", { fetchedOrders: safety * 250 });
+      break;
+    }
     const q = `fulfillment_status:fulfilled AND status:any AND processed_at:>=${sinceIso}`;
-    const res: any = await admin.graphql(ORDERS_QUERY, { variables: { first: 50, after: cursor, q } });
+    const res: any = await admin.graphql(ORDERS_QUERY, { variables: { first: 250, after: cursor, q } });
     const j = await res.json();
     const edges = j?.data?.orders?.edges ?? [];
     for (const e of edges) {
@@ -238,7 +245,7 @@ async function fetchAllFulfilledLineItems(admin: any, sinceIso: string): Promise
     cursor = pi.endCursor;
     safety++;
   }
-  return tuples;
+  return { tuples, partial: ordersPartial };
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -341,10 +348,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
   console.log("[SHIPMENTS] loader start", { days, sinceIso });
   // 先に発送データを取得し、そこから出てくる商品 GID だけ IP map を構築する
-  const [tuples, { tokens, reviews }] = await Promise.all([
+  const [tuplesResult, { tokens, reviews }] = await Promise.all([
     fetchAllFulfilledLineItems(admin, sinceIso),
     fetchTokensAndReviews(admin),
   ]);
+  const tuples = tuplesResult.tuples;
+  const ordersPartial = tuplesResult.partial;
   const productGids = Array.from(new Set(tuples.map((t) => t.product_gid)));
   const productIPMap = await buildProductIPMap(admin, productGids);
   console.log("[SHIPMENTS] data loaded", { products: productIPMap.size, tuples: tuples.length, tokens: tokens.size, reviews: reviews.size });
@@ -467,6 +476,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     stateCounts,
     allIpTotal,
     allCategoryTotal,
+    ordersPartial,
     filters: { ip: ipHandleParam, category: categoryParam, state: stateParam, days, sortBy, sortDir },
   };
 };
@@ -609,7 +619,7 @@ function StateBadge({ state }: { state: ShipmentState }) {
 }
 
 export default function ShipmentsTab() {
-  const { rows, pagination, ipFacets, categoryFacets, stateCounts, filters, allIpTotal, allCategoryTotal } = useLoaderData<typeof loader>() as any;
+  const { rows, pagination, ipFacets, categoryFacets, stateCounts, filters, allIpTotal, allCategoryTotal, ordersPartial } = useLoaderData<typeof loader>() as any;
   const [searchParams, setSearchParams] = useSearchParams();
   const fetcher = useFetcher<typeof action>();
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
@@ -736,6 +746,16 @@ export default function ShipmentsTab() {
       subtitle={`発送済み注文を商品×お客様単位で表示。3状態 (未依頼/依頼済/レビュー済) を可視化し、個別に「今すぐ依頼を送る」ことができます。`}
     >
       <Layout>
+        {ordersPartial ? (
+          <Layout.Section>
+            <Banner tone="warning" title="取得タイムアウト: 一部の発送のみ表示中">
+              <Text as="p" variant="bodyMd">
+                発送数が多すぎて 50 秒の処理時間制限を超えました。最初の数千件のみ表示しています。
+                発送日範囲を「過去30日」「過去90日」などに絞ると全件表示されます。
+              </Text>
+            </Banner>
+          </Layout.Section>
+        ) : null}
         {flashMessage ? (
           <Layout.Section>
             <Banner tone="success" onDismiss={() => setFlashMessage(null)}>{flashMessage}</Banner>
