@@ -201,6 +201,11 @@ async function fetchAllFulfilledLineItems(admin: any, sinceIso: string): Promise
   const tuples: LineItemTuple[] = [];
   let cursor: string | null = null;
   let safety = 0;
+  let totalOrders = 0;
+  let skippedNoEmail = 0;
+  let skippedNoProduct = 0;
+  let skippedDup = 0;
+  let skippedNonParent = 0;
   const orderFetchDeadline = Date.now() + 50000; // 50s budget for orders fetch
   let ordersPartial = false;
   while (safety < 30) {  // 7500件上限 (30 * 250) - 全期間まで対応
@@ -215,17 +220,18 @@ async function fetchAllFulfilledLineItems(admin: any, sinceIso: string): Promise
     const edges = j?.data?.orders?.edges ?? [];
     for (const e of edges) {
       const order = e.node;
+      totalOrders++;
       const customerEmail = order.customer?.email || "";
-      if (!customerEmail) continue;
+      if (!customerEmail) { skippedNoEmail++; continue; }
       const customerName = order.customer?.displayName || `${order.customer?.firstName || ""} ${order.customer?.lastName || ""}`.trim() || "(名前未登録)";
       const fulfilledAt = order.fulfillments?.[0]?.createdAt || order.processedAt || "";
       const liEdges = order.lineItems?.edges ?? [];
       const seenProductGids = new Set<string>();
       for (const liE of liEdges) {
         const product = liE.node?.product;
-        if (!product || !product.id) continue;
-        if (seenProductGids.has(product.id)) continue;
-        if (!isParentProduct(product)) continue;
+        if (!product || !product.id) { skippedNoProduct++; continue; }
+        if (seenProductGids.has(product.id)) { skippedDup++; continue; }
+        if (!isParentProduct(product)) { skippedNonParent++; continue; }
         seenProductGids.add(product.id);
         tuples.push({
           order_gid: order.id,
@@ -245,6 +251,7 @@ async function fetchAllFulfilledLineItems(admin: any, sinceIso: string): Promise
     cursor = pi.endCursor;
     safety++;
   }
+  console.log("[SHIPMENTS] fetch summary", { safety, totalOrders, skippedNoEmail, skippedNoProduct, skippedDup, skippedNonParent, tuplesGenerated: tuples.length, ordersPartial });
   return { tuples, partial: ordersPartial };
 }
 
