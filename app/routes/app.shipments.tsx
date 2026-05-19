@@ -181,7 +181,7 @@ async function fetchAllFulfilledLineItems(admin: any, sinceIso: string): Promise
             processedAt
             customer { firstName lastName email displayName }
             fulfillments(first: 5) { createdAt }
-            lineItems(first: 50) {
+            lineItems(first: 15) {
               edges {
                 node {
                   id
@@ -206,16 +206,16 @@ async function fetchAllFulfilledLineItems(admin: any, sinceIso: string): Promise
   let skippedNoProduct = 0;
   let skippedDup = 0;
   let skippedNonParent = 0;
-  const orderFetchDeadline = Date.now() + 50000; // 50s budget for orders fetch
+  const orderFetchDeadline = Date.now() + 40000; // 40s budget for orders fetch (10000 → cold start 余裕)
   let ordersPartial = false;
-  while (safety < 30) {  // 7500件上限 (30 * 250) - 全期間まで対応
+  while (safety < 50) {  // 5000件上限 (50 * 100) - 全期間対応
     if (Date.now() > orderFetchDeadline) {
       ordersPartial = true;
       console.warn("[shipments] orders fetch deadline hit, returning partial data", { fetchedOrders: safety * 250 });
       break;
     }
     const q = `fulfillment_status:fulfilled AND status:any AND processed_at:>=${sinceIso}`;
-    const res: any = await admin.graphql(ORDERS_QUERY, { variables: { first: 250, after: cursor, q } });
+    const res: any = await admin.graphql(ORDERS_QUERY, { variables: { first: 100, after: cursor, q } });
     const j = await res.json();
     const edges = j?.data?.orders?.edges ?? [];
     for (const e of edges) {
