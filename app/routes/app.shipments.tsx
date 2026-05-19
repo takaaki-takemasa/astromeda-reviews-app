@@ -338,6 +338,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const PAGE_SIZE = 50;
 
   // 期間スコープ: デフォルト過去180日 (UI で変更可能)
+  const sortBy = (url.searchParams.get("sort_by") || "fulfilled_at").toLowerCase();
+  const sortDir = (url.searchParams.get("sort_dir") || "desc").toLowerCase() === "asc" ? "asc" : "desc";
   const daysParam = parseInt(url.searchParams.get("days") || "180", 10);
   const days = isNaN(daysParam) || daysParam < 1 ? 180 : Math.min(daysParam, 730);
   const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
@@ -407,8 +409,39 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   // state filter
   const stateFiltered = stateParam === "all" ? filtered : filtered.filter((r) => r.state === stateParam);
-  // sort: 発送日新しい順
+  // sort: dynamic by user choice (default: 発送日新しい順)
+  const sortMul = sortDir === "asc" ? 1 : -1;
+  const getSortKey = (r: any): string | number => {
+    switch (sortBy) {
+      case "product":
+      case "product_title":
+        return (r.product_title || "").toLowerCase();
+      case "ip":
+      case "ip_label":
+        return (r.ip_label || "").toLowerCase();
+      case "category":
+        return (r.category || "").toLowerCase();
+      case "customer":
+      case "customer_name":
+        return (r.customer_name || "").toLowerCase();
+      case "customer_email":
+        return (r.customer_email || "").toLowerCase();
+      case "order_id":
+        return (r.order_id || "").toLowerCase();
+      case "state":
+        // state ordering: pending_request < requested < reviewed (発送→依頼→レビュー の時系列)
+        return r.state === "pending_request" ? 0 : r.state === "requested" ? 1 : 2;
+      case "fulfilled_at":
+      default:
+        return r.fulfilled_at ? new Date(r.fulfilled_at).getTime() : 0;
+    }
+  };
   stateFiltered.sort((a, b) => {
+    const ak = getSortKey(a);
+    const bk = getSortKey(b);
+    if (ak < bk) return -1 * sortMul;
+    if (ak > bk) return 1 * sortMul;
+    // tie-breaker: fulfilled_at desc
     const aT = a.fulfilled_at ? new Date(a.fulfilled_at).getTime() : 0;
     const bT = b.fulfilled_at ? new Date(b.fulfilled_at).getTime() : 0;
     return bT - aT;
@@ -425,7 +458,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     ipFacets: Array.from(ipFacets.entries()).map(([h, v]) => ({ handle: h, label: v.label, count: v.count })).sort((a, b) => b.count - a.count),
     categoryFacets: Array.from(categoryFacets.entries()).map(([k, v]) => ({ key: k, count: v })).sort((a, b) => b.count - a.count),
     stateCounts,
-    filters: { ip: ipHandleParam, category: categoryParam, state: stateParam, days },
+    filters: { ip: ipHandleParam, category: categoryParam, state: stateParam, days, sortBy, sortDir },
   };
 };
 
@@ -596,6 +629,48 @@ export default function ShipmentsTab() {
     setSearchParams(next);
   }, [searchParams, setSearchParams, stateTabs]);
 
+  // Sort handler: click column header to toggle ASC/DESC
+  const currentSortBy = filters.sortBy || "fulfilled_at";
+  const currentSortDir = filters.sortDir || "desc";
+  const handleSort = useCallback((key: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (currentSortBy === key) {
+      // toggle direction
+      next.set("sort_dir", currentSortDir === "asc" ? "desc" : "asc");
+    } else {
+      next.set("sort_by", key);
+      next.set("sort_dir", key === "fulfilled_at" ? "desc" : "asc");
+    }
+    next.set("page", "1");
+    setSearchParams(next);
+  }, [searchParams, setSearchParams, currentSortBy, currentSortDir]);
+
+  // Build sortable header label with arrow indicator
+  const sortLabel = (key: string, label: string): any => {
+    const active = currentSortBy === key;
+    const arrow = active ? (currentSortDir === "asc" ? " ▲" : " ▼") : "";
+    return (
+      <button
+        type="button"
+        onClick={() => handleSort(key)}
+        style={{
+          background: "transparent",
+          border: "none",
+          padding: 0,
+          margin: 0,
+          font: "inherit",
+          color: active ? "#005bd3" : "inherit",
+          fontWeight: active ? 600 : 500,
+          cursor: "pointer",
+          textAlign: "left",
+        }}
+        title={active ? "クリックで並び順を反転" : "クリックで並べ替え"}
+      >
+        {label}{arrow}
+      </button>
+    );
+  };
+
   // Pagination
   const handlePage = useCallback((newPage: number) => {
     const next = new URLSearchParams(searchParams);
@@ -659,11 +734,11 @@ export default function ShipmentsTab() {
                   itemCount={rows.length}
                   selectable={false}
                   headings={[
-                    { title: "商品" },
-                    { title: "お客様" },
-                    { title: "注文番号" },
-                    { title: "発送日" },
-                    { title: "状態" },
+                    { title: sortLabel("product", "商品 / IP") as any },
+                    { title: sortLabel("customer", "お客様") as any },
+                    { title: sortLabel("order_id", "注文番号") as any },
+                    { title: sortLabel("fulfilled_at", "発送日") as any },
+                    { title: sortLabel("state", "状態") as any },
                     { title: "アクション" },
                   ]}
                 >
