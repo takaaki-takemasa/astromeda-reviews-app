@@ -321,6 +321,8 @@ async function fetchTokensAndReviews(admin: any): Promise<{ tokens: Map<string, 
 // ──────────────────────────────────────────────────────────────────
 // Loader
 // ──────────────────────────────────────────────────────────────────
+export const config = { maxDuration: 60 };
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
   const url = new URL(request.url);
