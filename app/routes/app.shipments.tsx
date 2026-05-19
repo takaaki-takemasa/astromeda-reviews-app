@@ -781,6 +781,7 @@ export default function ShipmentsTab() {
   const { rows, pagination, ipFacets, categoryFacets, stateCounts, filters, allIpTotal, allCategoryTotal, ordersPartial, fetchStats } = useLoaderData<typeof loader>() as any;
   const [searchParams, setSearchParams] = useSearchParams();
   const fetcher = useFetcher<typeof action>();
+  const previewFetcher = useFetcher<typeof action>();
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
   // Optimistic UI: rows that user clicked 今すぐ依頼 — instantly mark as requested (依頼済)
   const [optimisticRequestedKeys, setOptimisticRequestedKeys] = useState<Set<string>>(new Set());
@@ -891,30 +892,18 @@ export default function ShipmentsTab() {
   }, [searchParams, setSearchParams]);
 
   // Open preview modal — fetches preview data from server (subject/body/recipient/coupon)
-  const openPreview = useCallback(async (row: ShipmentRow) => {
+  const openPreview = useCallback((row: ShipmentRow) => {
     setPreviewRow(row);
     setPreviewData(null);
     setPreviewLoading(true);
-    try {
-      const fd = new FormData();
-      fd.set("intent", "preview_request");
-      fd.set("order_id", row.order_id.replace("#", ""));
-      fd.set("customer_email", row.customer_email);
-      fd.set("customer_name", row.customer_name);
-      fd.set("product_title", row.product_title);
-      const res = await fetch(window.location.pathname + window.location.search, { method: "POST", body: fd });
-      const json: any = await res.json();
-      if (json?.ok && json?.preview) {
-        setPreviewData(json.preview);
-      } else {
-        setPreviewData({ error: json?.error || "プレビュー取得失敗" });
-      }
-    } catch (e: any) {
-      setPreviewData({ error: e?.message || "プレビュー取得エラー" });
-    } finally {
-      setPreviewLoading(false);
-    }
-  }, []);
+    const fd = new FormData();
+    fd.set("intent", "preview_request");
+    fd.set("order_id", row.order_id.replace("#", ""));
+    fd.set("customer_email", row.customer_email);
+    fd.set("customer_name", row.customer_name);
+    fd.set("product_title", row.product_title);
+    previewFetcher.submit(fd, { method: "post" });
+  }, [previewFetcher]);
 
   const closePreview = useCallback(() => {
     setPreviewRow(null);
@@ -941,6 +930,17 @@ export default function ShipmentsTab() {
     // close immediately for snappy UX; banner will show server result
     closePreview();
   }, [previewRow, fetcher, closePreview]);
+
+  // Sync preview fetcher data into local state when it arrives
+  if (previewFetcher.state === "idle" && previewFetcher.data && previewLoading) {
+    const d: any = previewFetcher.data;
+    if (d?.ok && d?.preview) {
+      setPreviewData(d.preview);
+    } else {
+      setPreviewData({ error: d?.error || "プレビュー取得失敗" });
+    }
+    setPreviewLoading(false);
+  }
 
   // Flash on action success/failure
   if (fetcher.state === "idle" && fetcher.data?.intent === "send_request" && flashMessage === null) {
