@@ -821,7 +821,7 @@ export default function ShipmentsTab() {
                   resourceName={{ singular: "発送明細", plural: "発送明細" }}
                   itemCount={rows.length}
                   selectable={false}
-                  sortable={[true, true, true, true, true, false]}
+                  sortable={[true, true, true, true, true]}
                   sortDirection={currentSortDir === "asc" ? "ascending" : "descending"}
                   sortColumnIndex={sortColumnIndex}
                   defaultSortDirection="descending"
@@ -831,8 +831,7 @@ export default function ShipmentsTab() {
                     { title: "お客様" },
                     { title: "注文番号" },
                     { title: "発送日" },
-                    { title: "状態" },
-                    { title: "アクション" },
+                    { title: "状態 / 操作" },
                   ]}
                 >
                   {rows.map((r: any, idx: number) => (
@@ -874,16 +873,16 @@ export default function ShipmentsTab() {
                         </BlockStack>
                       </IndexTable.Cell>
                       <IndexTable.Cell>
-                        <StateBadge state={r.state} />
-                      </IndexTable.Cell>
-                      <IndexTable.Cell>
-                        {r.state === "pending_request" ? (
-                          <Button size="slim" variant="primary" onClick={() => sendRequest(r)} loading={fetcher.state !== "idle"}>📧 今すぐ依頼</Button>
-                        ) : r.state === "requested" ? (
-                          <Text as="span" variant="bodySm" tone="subdued">依頼 {fmtDate(r.request_sent_at || "")}</Text>
-                        ) : (
-                          <Text as="span" variant="bodySm" tone="success">✓ 投稿済</Text>
-                        )}
+                        <BlockStack gap="100">
+                          <StateBadge state={r.state} />
+                          {r.state === "pending_request" ? (
+                            <Button size="slim" variant="primary" onClick={() => sendRequest(r)} loading={fetcher.state !== "idle"}>📧 今すぐ依頼</Button>
+                          ) : r.state === "requested" ? (
+                            <Text as="span" variant="bodySm" tone="subdued">{fmtDate(r.request_sent_at || "")} 依頼済</Text>
+                          ) : (
+                            <Text as="span" variant="bodySm" tone="success">✓ 投稿済</Text>
+                          )}
+                        </BlockStack>
                       </IndexTable.Cell>
                     </IndexTable.Row>
                   ))}
