@@ -661,6 +661,7 @@ export default function IncentiveTab() {
                       <Button url={`https://admin.shopify.com/store/${shopHandle}/discounts/new`} target="_top" variant="secondary" external>+ Shopify で新規ディスカウントを作成</Button>
                     </InlineStack>
                     <Divider />
+                    <TextField label="発行コードの有効期間 (日数)" value={vdays} onChange={setVdays} type="number" autoComplete="off" helpText="レビュー承認時に発行する固有コード REV-XXXXXX の有効期限。例: 90 → 発行から90日後に失効" />
                     <TextField label="依頼メール訴求文" value={pitch} onChange={setPitch} multiline={3} helpText="例: レビュー投稿で次回 10% OFF プレゼント 🎁。Shopify ディスカウント側で変更したら手動で更新してください。" autoComplete="off" />
                     <InlineStack gap="200">
                       <Button variant="primary" tone="success" onClick={saveSettings} loading={fetcher.state !== "idle"}>💾 設定を保存</Button>
