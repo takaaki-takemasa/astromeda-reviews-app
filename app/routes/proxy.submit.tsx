@@ -21,13 +21,15 @@ async function translateToJapanese(text: string): Promise<string | null> {
 
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
 import { useLoaderData, useActionData, useNavigation } from "@remix-run/react";
-import { authenticate } from "../shopify.server";
+import { unauthenticated } from "../shopify.server";
+
+const SHOP_DOMAIN = "production-mining-base.myshopify.com";
 import { enforceRateLimit, RATE_LIMITS } from "../lib/rate-limit";
 
 /**
  * Customer-facing review submission form via App Proxy.
  *
- * URL: https://shop.mining-base.co.jp/apps/reviews/submit?token=XXX
+ * URL: https://shop.mining-base.co.jp/apps/reviews-1/submit?token=XXX
  *      → Shopify proxies to /proxy/submit?token=XXX (this route)
  *
  * Phase K-01〜K-07 で扱う論点:
@@ -134,19 +136,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       return { state: "invalid_token" as const, message: "リンクが正しくありません。メールに記載されたリンクをご確認ください。" };
     }
 
-    // Step 2: authenticate via App Proxy HMAC signature
+    // Step 2: use unauthenticated.admin (offline session) — review.submit.tsx と同じパターン
+    // Token UUID 自体が secret なので App Proxy HMAC は省略
     let admin: any = null;
     try {
-      const result = await authenticate.public.appProxy(request);
+      const result = await unauthenticated.admin(SHOP_DOMAIN);
       admin = result.admin;
     } catch (authErr: any) {
-      console.error("[proxy.submit/loader] auth threw:", authErr?.message || authErr, "url=", request.url.slice(0, 200));
-      return { state: "error" as const, message: "Shopify App Proxy 認証に失敗しました。メールのリンクから再度お試しください。", diag: `auth: ${authErr?.message || "unknown"}` };
+      console.error("[proxy.submit/loader] unauthenticated.admin failed:", authErr?.message || authErr);
+      return { state: "error" as const, message: "ストア認証に失敗しました。少し待ってから再度お試しください。", diag: `auth: ${authErr?.message || "unknown"}` };
     }
-
     if (!admin) {
-      console.error("[proxy.submit/loader] admin missing — no Shopify session for this shop");
-      return { state: "error" as const, message: "Shopify セッションが見つかりません。", diag: "no_admin" };
+      return { state: "error" as const, message: "ストア認証セッションが見つかりません。", diag: "no_admin" };
     }
 
     // Step 3: token lookup
@@ -171,9 +172,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   enforceRateLimit(request, RATE_LIMITS.PUBLIC_SUBMIT);
-  const { admin } = await authenticate.public.appProxy(request);
+  const { admin } = await unauthenticated.admin(SHOP_DOMAIN);
   if (!admin) {
-    throw new Response("App Proxy authentication failed", { status: 401 });
+    throw new Response("Shop admin auth failed", { status: 401 });
   }
 
   const formData = await request.formData();
@@ -298,7 +299,7 @@ export default function PublicReviewSubmit() {
         {token.customer_name || "お客様"} へ・3 分でご感想をお寄せください。
       </p>
 
-      <form method="post" action={`/apps/reviews/submit?token=${encodeURIComponent(token.token)}`}>
+      <form method="post" action={`/apps/reviews-1/submit?token=${encodeURIComponent(token.token)}`}>
         <input type="hidden" name="token" value={token.token} />
 
         <label style={fieldLabel}>評価 (必須)</label>

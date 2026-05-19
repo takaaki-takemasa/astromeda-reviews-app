@@ -20,7 +20,7 @@ import { appendAuditLogSafe } from "../lib/audit-log";
  *   {
  *     "ok": true,
  *     "token": "uuid-v4",
- *     "review_url": "https://shop.mining-base.co.jp/apps/reviews/submit?token=XXX",
+ *     "review_url": "https://shop.mining-base.co.jp/apps/reviews-1/submit?token=XXX",
  *     "expires_at": "2026-08-14T..."
  *   }
  *
@@ -113,7 +113,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const token = generateUuid();
   const expires_at = new Date(Date.now() + expires_days * 24 * 60 * 60 * 1000).toISOString();
-  const review_url = `https://${STORE_DOMAIN}/apps/reviews/submit?token=${token}`;
+  const review_url = `https://${STORE_DOMAIN}/apps/reviews-1/submit?token=${token}`;
 
   const fields = [
     { key: "token", value: token },

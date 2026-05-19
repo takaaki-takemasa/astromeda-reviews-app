@@ -558,7 +558,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     } catch (_) { /* skip */ }
 
     const subject = `[Astromeda] ${product_title} のレビューをお願いします`;
-    const previewReviewUrl = `https://${STORE_DOMAIN}/apps/reviews/submit?token=<送信時に発行>`;
+    const previewReviewUrl = `https://${STORE_DOMAIN}/apps/reviews-1/submit?token=<送信時に発行>`;
     const textBody = `${customer_name} 様
 
 先日ご利用いただいた「${product_title}」はいかがでしたでしょうか?
@@ -602,7 +602,7 @@ ${previewReviewUrl}
     // 1. トークン発行
     const token = generateUuid();
     const expires_at = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
-    const review_url = `https://${STORE_DOMAIN}/apps/reviews/submit?token=${token}`;
+    const review_url = `https://${STORE_DOMAIN}/apps/reviews-1/submit?token=${token}`;
     const CREATE_TOKEN = `#graphql
       mutation CreateToken($metaobject: MetaobjectCreateInput!) {
         metaobjectCreate(metaobject: $metaobject) {

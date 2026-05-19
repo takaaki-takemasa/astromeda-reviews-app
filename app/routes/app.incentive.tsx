@@ -291,7 +291,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     const token = "TEST-" + Math.random().toString(36).slice(2, 10).toUpperCase();
     const STORE_DOMAIN = process.env.SHOP_CUSTOM_DOMAIN || "shop.mining-base.co.jp";
-    const reviewUrl = `https://${STORE_DOMAIN}/apps/reviews/submit?token=${token}`;
+    const reviewUrl = `https://${STORE_DOMAIN}/apps/reviews-1/submit?token=${token}`;
 
     const result = await sendReviewRequestEmail({ to: email, customerName: name, productTitle, reviewUrl, couponPitch });
     if (!result.ok) {
@@ -346,7 +346,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // ④ レビュー依頼 URL (Phase 1 と同じ形式)
     const token = "TEST-" + Math.random().toString(36).slice(2, 10).toUpperCase();
     const STORE_DOMAIN = process.env.SHOP_CUSTOM_DOMAIN || "shop.mining-base.co.jp";
-    const reviewUrl = `https://${STORE_DOMAIN}/apps/reviews/submit?token=${token}`;
+    const reviewUrl = `https://${STORE_DOMAIN}/apps/reviews-1/submit?token=${token}`;
     // ⑤ Invoice Email 送信
     const customMessage = `${name} 様\n\nAstromeda Reviews 仮顧客テスト送信です。\n\nお買い上げ予定の「${productTitle}」をご利用いただいたあとは、ぜひレビューをお書きください。\n\n▶ レビューを投稿する\n${reviewUrl}\n\nレビュー投稿で次回 10% OFF クーポンをプレゼント 🎁\n\n（このメールは社内テスト用の Draft Order ${draftOrderName} 経由で送信されています。¥0 ですのでお支払いは不要です。）`;
     const sres: any = await admin.graphql(`mutation S($id: ID!, $email: EmailInput) { draftOrderInvoiceSend(id: $id, email: $email) { draftOrder { id name } userErrors { field message } } }`, {
