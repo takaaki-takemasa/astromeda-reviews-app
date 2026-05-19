@@ -756,21 +756,6 @@ export default function ShipmentsTab() {
       subtitle={`発送済み注文を商品×お客様単位で表示。3状態 (未依頼/依頼済/レビュー済) を可視化し、個別に「今すぐ依頼を送る」ことができます。`}
     >
       <Layout>
-        {fetchStats ? (
-          <Layout.Section>
-            <Banner tone="info" title="🔍 取得統計 (デバッグ用・後で削除)">
-              <Text as="p" variant="bodyMd">
-                fetched orders: <strong>{fetchStats.totalOrders}</strong> ({fetchStats.safety} pages × 250) /
-                tuples: <strong>{fetchStats.tuplesGenerated}</strong> /
-                no_email skipped: {fetchStats.skippedNoEmail} /
-                no_product skipped: {fetchStats.skippedNoProduct} /
-                dup skipped: {fetchStats.skippedDup} /
-                non_parent skipped: {fetchStats.skippedNonParent} /
-                partial: {String(fetchStats.ordersPartial)}
-              </Text>
-            </Banner>
-          </Layout.Section>
-        ) : null}
         {ordersPartial ? (
           <Layout.Section>
             <Banner tone="warning" title="取得タイムアウト: 一部の発送のみ表示中">
