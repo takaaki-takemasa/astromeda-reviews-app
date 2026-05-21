@@ -599,14 +599,21 @@ function renderReviewCardHtml(r: any, productTitle: string): string {
   return `<article class="astro-review-card" itemscope itemtype="https://schema.org/Review"><meta itemprop="itemReviewed" content="${escapeHtml(productTitle)}"><div itemprop="reviewRating" itemscope itemtype="https://schema.org/Rating" style="display:inline"><meta itemprop="ratingValue" content="${rating}"><meta itemprop="bestRating" content="5"><div class="astro-review-card__stars">${stars}${badge}</div></div>${titleHtml}${bodyHtml}${photosHtml}<footer class="astro-review-card__footer"><span itemprop="author">— ${author}</span><time>${dateStr}</time></footer></article>`;
 }
 
-function renderReviewsContainerHtml(reviews: any[], productTitle: string): string {
-  if (reviews.length === 0) return "";
+function computeAvgRating(reviews: any[]): { avg: string; avgRounded: number; sampleSize: number } {
   const count = reviews.length;
+  if (count === 0) return { avg: "0.0", avgRounded: 0, sampleSize: 0 };
   const sampleSize = Math.min(50, count);
   let sumRating = 0;
   for (let i = 0; i < sampleSize; i++) sumRating += parseInt(reviews[i].rating || "0", 10);
   const avg = (Math.round(sumRating * 10 / sampleSize) / 10).toFixed(1);
   const avgRounded = Math.round(sumRating / sampleSize);
+  return { avg, avgRounded, sampleSize };
+}
+
+function renderReviewsContainerHtml(reviews: any[], productTitle: string): string {
+  if (reviews.length === 0) return "";
+  const count = reviews.length;
+  const { avg, avgRounded } = computeAvgRating(reviews);
   const avgStars = "★".repeat(avgRounded) + `<span style="color:#d1d5db">${"★".repeat(Math.max(0,5-avgRounded))}</span>`;
   const maxShow = 6;
   const cardsHtml = reviews.slice(0, maxShow).map(r => renderReviewCardHtml(r, productTitle)).join("");
@@ -881,9 +888,10 @@ async function regenerateProductReviewsHtml(admin: any, productGid: string): Pro
       console.log("[REGEN] stale cleanup", { productGid, before: ids.length, after: liveIds.length });
       try { await setProductApprovedList(admin, productGid, liveIds); } catch (e: any) { console.error("[REGEN] stale cleanup FAIL", { error: e?.message }); }
     }
-    // 4. HTML 描画
+    // 4. HTML 描画 + 集計値計算 (Storefront 表示用)
     const html = renderReviewsContainerHtml(reviews, productTitle);
     const valueToWrite = html || "(no reviews)";
+    const { avg: avgRatingStr } = computeAvgRating(reviews);
     console.log("[REGEN] html ready", { productGid, htmlLen: valueToWrite.length });
     // 5. Metaobject upsert (handle = product handle)
     const res: any = await admin.graphql(METAOBJECT_UPSERT_MUTATION, {
@@ -894,6 +902,7 @@ async function regenerateProductReviewsHtml(admin: any, productGid: string): Pro
             { key: "product_ref", value: productGid },
             { key: "html", value: valueToWrite },
             { key: "count", value: String(reviews.length) },
+            { key: "avg_rating", value: avgRatingStr },
           ],
         },
       },
