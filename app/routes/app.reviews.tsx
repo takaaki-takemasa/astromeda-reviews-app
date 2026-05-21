@@ -2609,32 +2609,52 @@ export default function ReviewsTab() {
       </IndexTable.Cell>
       <IndexTable.Cell>
         <div style={{ display: "flex", alignItems: "center", gap: 12, paddingTop: 6, paddingBottom: 6 }}>
-          {r.product?.image_url ? (
-            <img
-              src={r.product.image_url}
-              alt={r.product.title || ""}
-              style={{
-                width: 72,
-                height: 72,
-                objectFit: "cover",
-                borderRadius: 6,
-                border: "1px solid #e5e7eb",
-                flexShrink: 0,
-              }}
-            />
-          ) : (
-            <div style={{ width: 72, height: 72, background: "#f3f4f6", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "#9ca3af", flexShrink: 0, border: "1px solid #e5e7eb" }}>NO IMG</div>
-          )}
-          <span style={{
-            display: "block",
-            maxWidth: 240,
-            fontSize: 13,
-            lineHeight: 1.4,
-            wordBreak: "break-word",
-            whiteSpace: "normal",
-          }}>
-            {r.product?.title || "(商品削除)"}
-          </span>
+          {(() => {
+            const productHref = r.product?.handle ? `https://shop.mining-base.co.jp/products/${r.product.handle}` : null;
+            const imgEl = r.product?.image_url ? (
+              <img
+                src={r.product.image_url}
+                alt={r.product.title || ""}
+                style={{
+                  width: 72,
+                  height: 72,
+                  objectFit: "cover",
+                  borderRadius: 6,
+                  border: "1px solid #e5e7eb",
+                  flexShrink: 0,
+                }}
+              />
+            ) : (
+              <div style={{ width: 72, height: 72, background: "#f3f4f6", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "#9ca3af", flexShrink: 0, border: "1px solid #e5e7eb" }}>NO IMG</div>
+            );
+            const titleEl = (
+              <span style={{
+                display: "block",
+                maxWidth: 240,
+                fontSize: 13,
+                lineHeight: 1.4,
+                wordBreak: "break-word",
+                whiteSpace: "normal",
+                color: productHref ? "#2563eb" : "inherit",
+                textDecoration: productHref ? "underline" : "none",
+              }}>
+                {r.product?.title || "(商品削除)"}
+              </span>
+            );
+            if (productHref) {
+              return (
+                <>
+                  <a href={productHref} target="_blank" rel="noopener noreferrer" title={`商品ページを開く: ${r.product?.title || ""}`} style={{ flexShrink: 0, lineHeight: 0 }} onClick={(e) => e.stopPropagation()}>
+                    {imgEl}
+                  </a>
+                  <a href={productHref} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }} onClick={(e) => e.stopPropagation()}>
+                    {titleEl}
+                  </a>
+                </>
+              );
+            }
+            return (<>{imgEl}{titleEl}</>);
+          })()}
         </div>
       </IndexTable.Cell>
       <IndexTable.Cell>
