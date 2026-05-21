@@ -1161,7 +1161,13 @@ export default function ShipmentsTab() {
                           ) : r.state === "pending_request" ? (
                             <Button size="slim" variant="primary" onClick={() => openPreview(r)} loading={fetcher.state !== "idle" && fetcher.formData?.get("order_id") === r.order_id.replace("#", "")}>📧 今すぐ依頼</Button>
                           ) : r.state === "requested" ? (
-                            <Text as="span" variant="bodySm" tone="subdued">{fmtDate(r.request_sent_at || "")} 依頼済</Text>
+                            <BlockStack gap="050">
+                              {r.request_sent_at ? (
+                                <Text as="span" variant="bodyXs" tone="subdued">{fmtDate(r.request_sent_at)} 送信 ({fmtRelative(r.request_sent_at)})</Text>
+                              ) : null}
+                              <Text as="span" variant="bodyXs" tone="critical">⏳ レビュー未投稿</Text>
+                              <Button size="slim" variant="secondary" onClick={() => openPreview(r)} loading={fetcher.state !== "idle" && fetcher.formData?.get("order_id") === r.order_id.replace("#", "")}>📧 再依頼</Button>
+                            </BlockStack>
                           ) : (
                             <Text as="span" variant="bodySm" tone="success">✓ 投稿済</Text>
                           )}
