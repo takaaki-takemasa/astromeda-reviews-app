@@ -69,10 +69,45 @@ export interface ReviewRequestEmailParams {
   productTitle: string;
   reviewUrl: string;
   couponPitch?: string;
+  /** Override default subject. Supports {{customer_name}} / {{product_title}}. */
+  subjectOverride?: string;
+  /** Override default plain-text body. Supports {{customer_name}} / {{product_title}} / {{review_url}} / {{coupon_pitch}}. If provided, body is wrapped in ASTROMEDA branded HTML envelope. */
+  bodyTextOverride?: string;
+}
+
+function renderTemplate(tpl: string, vars: Record<string, string>): string {
+  return tpl.replace(/\{\{\s*([\w_]+)\s*\}\}/g, (_, k) => vars[k] ?? "");
+}
+
+function textToBrandedHtml(bodyText: string, customerName: string, productTitle: string, reviewUrl: string, couponPitch: string, subject: string): string {
+  const paragraphs = bodyText.split(/\n\n+/).map(p => p.trim()).filter(Boolean);
+  const ctaButton = `<div style="text-align:center;margin:24px 0;"><a href="${esc(reviewUrl)}" style="display:inline-block;padding:14px 36px;background:#06060C;color:#ffffff;text-decoration:none;font-size:16px;font-weight:600;border-radius:8px;">レビューを投稿する</a></div>`;
+  const pitchBlock = couponPitch
+    ? `<div style="margin: 24px 0; padding: 20px; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 12px; text-align: center;"><div style="font-size: 28px; margin-bottom: 8px;">🎁</div><p style="margin: 0; font-size: 16px; font-weight: 700; color: #92400e;">${esc(couponPitch)}</p></div>`
+    : "";
+  // Render paragraphs, replacing standalone URL or "review_url" line with CTA button
+  const bodyHtml = paragraphs.map(p => {
+    if (p === reviewUrl || p.includes("\u25b6 レビューを投稿する") || p === "{{ review_url }}" || p === "{{review_url}}") return ctaButton;
+    if (p.startsWith("🎁") || p.startsWith("\ud83c\udf81")) return pitchBlock;
+    // Strip any inline review URL from this paragraph (will be added as CTA below)
+    let pClean = p.split(reviewUrl).join("").trim();
+    if (!pClean) return ctaButton;
+    return `<p style="margin:0 0 16px 0;font-size:15px;line-height:1.7;color:#374151;">${esc(pClean).replace(/\n/g, "<br>")}</p>`;
+  }).join("");
+  return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(subject)}</title></head><body style="margin:0;padding:0;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Hiragino Sans','Yu Gothic',sans-serif;color:#111827;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f9fafb;padding:40px 16px;"><tr><td align="center"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.06);"><tr><td style="padding:32px 32px 8px 32px;"><p style="margin:0;font-size:13px;color:#9ca3af;letter-spacing:2px;">ASTROMEDA</p><h1 style="margin:8px 0 0 0;font-size:22px;font-weight:700;line-height:1.4;color:#06060C;">${esc(customerName)} 様、<br>レビューをお寄せいただけませんか?</h1></td></tr><tr><td style="padding:16px 32px;">${bodyHtml}</td></tr><tr><td style="padding:16px 32px 32px 32px;border-top:1px solid #f3f4f6;"><p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.6;">このメールは Astromeda レビューシステムから自動送信されています。<br>お心当たりがない場合はお手数ですがこのメールを破棄してください。</p></td></tr></table></td></tr></table></body></html>`;
 }
 
 export async function sendReviewRequestEmail(p: ReviewRequestEmailParams): Promise<SendEmailResult> {
-  const subject = `[Astromeda] ${p.productTitle} のレビューをお願いします`;
+  // Subject: override or default
+  const subject = p.subjectOverride
+    ? renderTemplate(p.subjectOverride, { customer_name: p.customerName, product_title: p.productTitle, review_url: p.reviewUrl, coupon_pitch: p.couponPitch || "" })
+    : `[Astromeda] ${p.productTitle} のレビューをお願いします`;
+  // If bodyTextOverride provided, use a fully custom body
+  if (p.bodyTextOverride) {
+    const renderedText = renderTemplate(p.bodyTextOverride, { customer_name: p.customerName, product_title: p.productTitle, review_url: p.reviewUrl, coupon_pitch: p.couponPitch || "" });
+    const customHtml = textToBrandedHtml(renderedText, p.customerName, p.productTitle, p.reviewUrl, p.couponPitch || "", subject);
+    return sendEmail({ to: p.to, subject, html: customHtml, text: renderedText, replyTo: "customersupport@mng-base.com", tags: [{ name: "type", value: "review_request" }] });
+  }
   const pitchBlock = p.couponPitch
     ? `<div style="margin: 24px 0; padding: 20px; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 12px; text-align: center;"><div style="font-size: 28px; margin-bottom: 8px;">🎁</div><p style="margin: 0; font-size: 16px; font-weight: 700; color: #92400e;">${esc(p.couponPitch)}</p></div>`
     : "";

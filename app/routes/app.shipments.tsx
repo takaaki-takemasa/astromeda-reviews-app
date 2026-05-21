@@ -519,6 +519,37 @@ function generateUuid(): string {
 
 const STORE_DOMAIN = process.env.SHOP_CUSTOM_DOMAIN || "shop.mining-base.co.jp";
 
+// Fetch all available "global" email templates from astromeda_review_email_config Metaobjects
+async function fetchAvailableTemplates(admin: any): Promise<Array<{ id: string; handle: string; label: string; subject: string; body_template: string; incentive_text: string; }>> {
+  const TEMPLATES_QUERY = `#graphql
+    query Templates {
+      metaobjects(type: "astromeda_review_email_config", first: 50, query: "fields.target_type:global AND fields.enabled:true") {
+        edges { node { id handle fields { key value } } }
+      }
+    }
+  `;
+  try {
+    const res: any = await admin.graphql(TEMPLATES_QUERY);
+    const j = await res.json();
+    const edges = j?.data?.metaobjects?.edges ?? [];
+    return edges.map((e: any) => {
+      const f = (k: string): string => e.node.fields.find((x: any) => x.key === k)?.value ?? "";
+      return {
+        id: e.node.id,
+        handle: e.node.handle,
+        label: f("target_label") || e.node.handle,
+        subject: f("subject"),
+        body_template: f("body_template"),
+        incentive_text: f("incentive_text"),
+      };
+    });
+  } catch { return []; }
+}
+
+function renderTemplateVars(tpl: string, vars: Record<string, string>): string {
+  return tpl.replace(/\{\{\s*([\w_]+)\s*\}\}/g, (_, k) => vars[k] ?? "");
+}
+
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
   const formData = await request.formData();
@@ -532,46 +563,46 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const customer_email = String(formData.get("customer_email") || "").toLowerCase();
     const customer_name = String(formData.get("customer_name") || "");
     const product_title = String(formData.get("product_title") || "対象商品");
+    const template_handle = String(formData.get("template_handle") || "tmpl-default-with-coupon");
     if (!order_id || !customer_email) return { ok: false, intent, error: "order_id and customer_email are required" };
 
-    // クーポン訴求文を Metaobject から取得
-    let couponPitch = "レビュー投稿で次回 10% OFF クーポンをプレゼント 🎁";
-    try {
-      const SETTINGS_QUERY = `#graphql
-        query GetIncentiveSettings {
-          metaobjectByHandle(handle: {type: "astromeda_incentive_settings", handle: "default"}) {
-            id
-            fields { key value }
-          }
-        }
-      `;
-      const sres: any = await admin.graphql(SETTINGS_QUERY);
-      const sj = await sres.json();
-      const settingsNode = sj?.data?.metaobjectByHandle;
-      if (settingsNode) {
-        for (const f of (settingsNode.fields || [])) {
-          if (f.key === "email_pitch" && f.value && f.value.trim()) {
-            couponPitch = f.value.trim();
-          }
-        }
-      }
-    } catch (_) { /* skip */ }
+    // 1) Fetch all available global templates (for dropdown)
+    const availableTemplates = await fetchAvailableTemplates(admin);
+    const selected = availableTemplates.find(t => t.handle === template_handle) || availableTemplates[0] || null;
 
-    const subject = `[Astromeda] ${product_title} のレビューをお願いします`;
+    // 2) クーポン訴求文: テンプレートの incentive_text を優先、なければ astromeda_incentive_settings から
+    let couponPitch = selected?.incentive_text || "";
+    if (!couponPitch) {
+      try {
+        const SETTINGS_QUERY = `#graphql
+          query GetIncentiveSettings {
+            metaobjectByHandle(handle: {type: "astromeda_incentive_settings", handle: "default"}) {
+              id
+              fields { key value }
+            }
+          }
+        `;
+        const sres: any = await admin.graphql(SETTINGS_QUERY);
+        const sj = await sres.json();
+        const settingsNode = sj?.data?.metaobjectByHandle;
+        if (settingsNode) {
+          for (const f of (settingsNode.fields || [])) {
+            if (f.key === "email_pitch" && f.value && f.value.trim()) {
+              couponPitch = f.value.trim();
+            }
+          }
+        }
+      } catch (_) { /* skip */ }
+    }
+
     const previewReviewUrl = `https://${STORE_DOMAIN}/apps/reviews-1/submit?token=<送信時に発行>`;
-    const textBody = `${customer_name} 様
-
-先日ご利用いただいた「${product_title}」はいかがでしたでしょうか?
-
-お客様の声が次のお客様の購入判断を助け、より良い商品づくりにつながります。
-1分ほどでご投稿いただけます。
-
-▶ レビューを投稿する
-${previewReviewUrl}
-
-🎁 ${couponPitch}
-
-— Astromeda Reviews System`;
+    const vars = { customer_name, product_title, review_url: previewReviewUrl, coupon_pitch: couponPitch };
+    const subject = selected?.subject
+      ? renderTemplateVars(selected.subject, vars)
+      : `[Astromeda] ${product_title} のレビューをお願いします`;
+    const textBody = selected?.body_template
+      ? renderTemplateVars(selected.body_template, vars)
+      : `${customer_name} 様\n\n先日ご利用いただいた「${product_title}」はいかがでしたでしょうか?\n\nお客様の声が次のお客様の購入判断を助け、より良い商品づくりにつながります。\n1分ほどでご投稿いただけます。\n\n▶ レビューを投稿する\n${previewReviewUrl}\n\n🎁 ${couponPitch}\n\n— Astromeda Reviews System`;
 
     return {
       ok: true,
@@ -584,6 +615,8 @@ ${previewReviewUrl}
         textBody,
         couponPitch,
         reviewUrlTemplate: previewReviewUrl,
+        selectedTemplateHandle: selected?.handle || "",
+        availableTemplates: availableTemplates.map(t => ({ handle: t.handle, label: t.label, hasIncentive: !!t.incentive_text })),
       },
     };
   }
@@ -657,13 +690,20 @@ ${previewReviewUrl}
       }
     } catch (_) { /* skip */ }
 
-    // 3. Resend で実際にメール送信 (これが Critical Path)
+    // 3. Template を取得 + Resend で実際にメール送信
+    const template_handle = String(formData.get("template_handle") || "tmpl-default-with-coupon");
+    const availTpls = await fetchAvailableTemplates(admin);
+    const tpl = availTpls.find(t => t.handle === template_handle) || availTpls.find(t => t.handle === "tmpl-default-with-coupon") || null;
+    // Template の incentive_text が空 → クーポン非添付。これがクーポンなしテンプレの判定。
+    const effectiveCouponPitch = tpl ? (tpl.incentive_text || "") : couponPitch;
     const sendResult = await sendReviewRequestEmail({
       to: customer_email,
       customerName: customer_name || "お客様",
       productTitle: product_title,
       reviewUrl: review_url,
-      couponPitch,
+      couponPitch: effectiveCouponPitch || undefined,
+      subjectOverride: tpl?.subject || undefined,
+      bodyTextOverride: tpl?.body_template || undefined,
     });
 
     if (!sendResult.ok) {
@@ -790,6 +830,7 @@ export default function ShipmentsTab() {
   const [previewData, setPreviewData] = useState<any | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<string>("tmpl-default-with-coupon");
 
   // IP セレクター: 上位 4 IP は Tab、残りは Popover + 検索可能 ActionList
   const TOP_IP_COUNT = 2;
@@ -902,8 +943,9 @@ export default function ShipmentsTab() {
     fd.set("customer_email", row.customer_email);
     fd.set("customer_name", row.customer_name);
     fd.set("product_title", row.product_title);
+    fd.set("template_handle", selectedTemplate);
     previewFetcher.submit(fd, { method: "post" });
-  }, [previewFetcher]);
+  }, [previewFetcher, selectedTemplate]);
 
   const closePreview = useCallback(() => {
     setPreviewRow(null);
@@ -926,6 +968,7 @@ export default function ShipmentsTab() {
     fd.set("customer_name", row.customer_name);
     fd.set("product_gid", row.product_gid);
     fd.set("product_title", row.product_title);
+    fd.set("template_handle", selectedTemplate);
     fetcher.submit(fd, { method: "post" });
     // close immediately for snappy UX; banner will show server result
     closePreview();
@@ -1160,6 +1203,33 @@ export default function ShipmentsTab() {
               <Banner tone="warning">
                 <Text as="p" variant="bodyMd">この内容で「送信する」を押すと <strong>実際にメールが {previewData.to} へ送信されます</strong>。キャンセル不可です。間違いがあれば「キャンセル」を押してください。</Text>
               </Banner>
+              {previewData.availableTemplates && previewData.availableTemplates.length > 0 ? (
+                <BlockStack gap="200">
+                  <Text as="p" variant="bodySm" tone="subdued">テンプレート</Text>
+                  <Select
+                    label=""
+                    labelHidden
+                    options={previewData.availableTemplates.map((t: any) => ({ label: t.label + (t.hasIncentive ? " 🎁" : ""), value: t.handle }))}
+                    value={previewData.selectedTemplateHandle || selectedTemplate}
+                    onChange={(val) => {
+                      setSelectedTemplate(val);
+                      // Re-fetch preview with new template
+                      if (previewRow) {
+                        setPreviewLoading(true);
+                        const fd = new FormData();
+                        fd.set("intent", "preview_request");
+                        fd.set("order_id", previewRow.order_id.replace("#", ""));
+                        fd.set("customer_email", previewRow.customer_email);
+                        fd.set("customer_name", previewRow.customer_name);
+                        fd.set("product_title", previewRow.product_title);
+                        fd.set("template_handle", val);
+                        previewFetcher.submit(fd, { method: "post" });
+                      }
+                    }}
+                    disabled={sending}
+                  />
+                </BlockStack>
+              ) : null}
               <BlockStack gap="200">
                 <Text as="p" variant="bodySm" tone="subdued">宛先</Text>
                 <Text as="p" variant="bodyMd" fontWeight="semibold">{previewData.to}</Text>
@@ -1182,10 +1252,17 @@ export default function ShipmentsTab() {
                   {previewData.textBody}
                 </div>
               </BlockStack>
-              <BlockStack gap="100">
-                <Text as="p" variant="bodySm" tone="subdued">クーポン訴求</Text>
-                <Text as="p" variant="bodyMd">🎁 {previewData.couponPitch}</Text>
-              </BlockStack>
+              {previewData.couponPitch ? (
+                <BlockStack gap="100">
+                  <Text as="p" variant="bodySm" tone="subdued">クーポン訴求</Text>
+                  <Text as="p" variant="bodyMd">🎁 {previewData.couponPitch}</Text>
+                </BlockStack>
+              ) : (
+                <BlockStack gap="100">
+                  <Text as="p" variant="bodySm" tone="subdued">クーポン</Text>
+                  <Text as="p" variant="bodyMd" tone="subdued">なし (このテンプレートはクーポンを含みません)</Text>
+                </BlockStack>
+              )}
               <Text as="p" variant="bodyXs" tone="subdued">※ レビューURL内のトークンは送信時に新規発行されます</Text>
             </BlockStack>
           ) : null}
